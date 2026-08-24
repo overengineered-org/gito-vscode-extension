@@ -1,0 +1,49 @@
+{
+  "data": {
+    "viewer": {
+      "id": "MDQ6VXNlcjE=",
+      "login": "octocat",
+      "name": "The Octocat"
+    },
+    "rateLimit": {
+      "limit": 5000,
+      "remaining": 4997,
+      "resetAt": "2030-01-01T00:00:00Z",
+      "used": 3
+    },
+    "repository": {
+      "pullRequest": {
+        "number": 42,
+        "title": "Improve review dashboard",
+        "body": "Review the dashboard changes.",
+        "updatedAt": "2030-01-01T00:00:00Z",
+        "isDraft": false,
+        "url": "https://github.com/octocat/Hello-World/pull/42",
+        "author": {
+          "login": "octocat",
+          "name": "The Octocat"
+        },
+        "comments": { "totalCount": 4 },
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": { "state": "SUCCESS" },
+        "reviewRequests": {
+          "pageInfo": { "hasNextPage": false, "endCursor": null },
+          "nodes": []
+        },
+        "reviews": {
+          "pageInfo": { "hasNextPage": false, "endCursor": null },
+          "nodes": [
+            {
+              "author": { "login": "reviewer" },
+              "state": "APPROVED"
+            }
+          ]
+        },
+        "headRefName": "feature/dashboard",
+        "baseRefName": "main"
+      }
+    }
+  }
+}

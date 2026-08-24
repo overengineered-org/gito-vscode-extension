@@ -1,0 +1,906 @@
+{
+  "name": "gito",
+  "displayName": "Git'o",
+  "description": "Open-source Git tooling for VS Code.",
+  "version": "0.0.0-development",
+  "publisher": "overengineered-org",
+  "license": "Apache-2.0",
+  "keywords": [
+    "git",
+    "git diff",
+    "merge conflicts",
+    "commit graph",
+    "code review"
+  ],
+  "galleryBanner": {
+    "color": "#111827",
+    "theme": "dark"
+  },
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/overengineered-org/gito-vscode-extension.git"
+  },
+  "bugs": {
+    "url": "https://github.com/overengineered-org/gito-vscode-extension/issues"
+  },
+  "homepage": "https://github.com/overengineered-org/gito-vscode-extension#readme",
+  "files": [
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "SUPPORT.md",
+    "dist/extension.js",
+    "dist/graph.css",
+    "dist/graph.js",
+    "dist/webview.css",
+    "dist/webview.js",
+    "dist/codicon.ttf",
+    "media/gito.png",
+    "media/gito.svg",
+    "media/onboarding/setup.svg"
+  ],
+  "engines": {
+    "vscode": "^1.132.0"
+  },
+  "icon": "media/gito.png",
+  "categories": [
+    "SCM Providers"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "Restricted Mode permits onboarding and read-only repository inspection when VS Code's bundled Git extension is available. Local and premium Git mutations require a trusted workspace; Git'o provides no fallback when vscode.git is unavailable."
+    }
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:gito.navigation",
+    "onWebviewPanel:gito.repositoryHome",
+    "onWebviewPanel:gito.commitGraph",
+    "onCommand:gito.openHome",
+    "onCommand:gito.refreshDashboard",
+    "onCommand:gito.onboarding.openOrChooseRepository",
+    "onCommand:gito.onboarding.openHome",
+    "onCommand:gito.onboarding.showSourceControlSteps",
+    "onCommand:gito.onboarding.confirmSourceControlHidden",
+    "onCommand:gito.onboarding.acknowledgeSourceControlVisible",
+    "onCommand:gito.onboarding.connectGitHub",
+    "onCommand:gito.onboarding.skipGitHub",
+    "onCommand:gito.onboarding.openSetup",
+    "onCommand:gito.diff.open",
+    "onCommand:gito.diff.openSingleFile",
+    "onCommand:gito.diff.openRepository",
+    "onCommand:gito.diff.review",
+    "onCommand:gito.diff.whitespace",
+    "onCommand:gito.diff.nextFile",
+    "onCommand:gito.diff.previousFile",
+    "onCommand:gito.diff.nextChange",
+    "onCommand:gito.diff.previousChange",
+    "onCommand:gito.diff.swapSides",
+    "onCommand:gito.diff.reopen",
+    "onCommand:gito.diff.changeOptions",
+    "onCommand:gito.stageChanges",
+    "onCommand:gito.unstageChanges",
+    "onCommand:gito.stageAll",
+    "onCommand:gito.unstageAll",
+    "onCommand:gito.openDiff",
+    "onCommand:gito.discardChanges",
+    "onCommand:gito.commit",
+    "onCommand:gito.fetch",
+    "onCommand:gito.pull",
+    "onCommand:gito.push",
+    "onCommand:gito.sync",
+    "onCommand:gito.copyCommitSha",
+    "onCommand:gito.copyCommitMessage",
+    "onCommand:gito.checkoutBranch",
+    "onCommand:gito.createBranch",
+    "onCommand:gito.publishBranch",
+    "onCommand:gito.deleteBranch",
+    "onCommand:gito.forceDeleteBranch",
+    "onCommand:gito.openCommitFileDiff",
+    "onCommand:gito.createWorktree",
+    "onCommand:gito.removeWorktree",
+    "onCommand:gito.openWorktree",
+    "onCommand:gito.openChanges",
+    "onCommand:gito.openPullRequests",
+    "onCommand:gito.openCommits",
+    "onCommand:gito.openBranches",
+    "onCommand:gito.openWorktrees",
+    "onCommand:gito.compare.open",
+    "onCommand:gito.compare.search",
+    "onCommand:gito.compare.actions",
+    "onCommand:gito.compare.recent",
+    "onCommand:gito.openConflicts",
+    "onCommand:gito.openOperations",
+    "onCommand:gito.history.toggleBlame",
+    "onCommand:gito.history.openFileHistory",
+    "onCommand:gito.history.openLineHistory",
+    "onCommand:gito.history.openContributors",
+    "onCommand:gito.history.search",
+    "onCommand:gito.history.previousRevision",
+    "onCommand:gito.history.nextRevision",
+    "onCommand:gito.history.openCommit",
+    "onCommand:gito.graph.open",
+    "onCommand:gito.developerDiagnostics.open",
+    "onCommand:gito.developerDiagnostics.toggle"
+  ],
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "gito.openHome",
+        "title": "Git'o: Open Repository Home"
+      },
+      {
+        "command": "gito.refreshDashboard",
+        "title": "Git'o: Refresh Dashboard"
+      },
+      {
+        "command": "gito.developerDiagnostics.open",
+        "title": "Git'o: Open Developer Diagnostics"
+      },
+      {
+        "command": "gito.developerDiagnostics.toggle",
+        "title": "Git'o: Toggle Developer Diagnostics"
+      },
+      {
+        "command": "gito.stageChanges",
+        "title": "Git'o: Stage Selected Changes"
+      },
+      {
+        "command": "gito.unstageChanges",
+        "title": "Git'o: Unstage Selected Changes"
+      },
+      {
+        "command": "gito.stageAll",
+        "title": "Git'o: Stage All Changes"
+      },
+      {
+        "command": "gito.unstageAll",
+        "title": "Git'o: Unstage All Changes"
+      },
+      {
+        "command": "gito.openDiff",
+        "title": "Git'o: Open Native Diff"
+      },
+      {
+        "command": "gito.discardChanges",
+        "title": "Git'o: Discard Changes"
+      },
+      {
+        "command": "gito.commit",
+        "title": "Git'o: Commit Changes"
+      },
+      {
+        "command": "gito.fetch",
+        "title": "Git'o: Fetch"
+      },
+      {
+        "command": "gito.pull",
+        "title": "Git'o: Pull"
+      },
+      {
+        "command": "gito.push",
+        "title": "Git'o: Push"
+      },
+      {
+        "command": "gito.sync",
+        "title": "Git'o: Sync"
+      },
+      {
+        "command": "gito.copyCommitSha",
+        "title": "Git'o: Copy Commit SHA"
+      },
+      {
+        "command": "gito.copyCommitMessage",
+        "title": "Git'o: Copy Commit Message"
+      },
+      {
+        "command": "gito.checkoutBranch",
+        "title": "Git'o: Checkout Branch"
+      },
+      {
+        "command": "gito.createBranch",
+        "title": "Git'o: Create Branch"
+      },
+      {
+        "command": "gito.publishBranch",
+        "title": "Git'o: Publish Branch"
+      },
+      {
+        "command": "gito.deleteBranch",
+        "title": "Git'o: Delete Branch"
+      },
+      {
+        "command": "gito.forceDeleteBranch",
+        "title": "Git'o: Force Delete Branch"
+      },
+      {
+        "command": "gito.openCommitFileDiff",
+        "title": "Git'o: Open Commit File Diff"
+      },
+      {
+        "command": "gito.createWorktree",
+        "title": "Git'o: Create Worktree"
+      },
+      {
+        "command": "gito.removeWorktree",
+        "title": "Git'o: Remove Worktree"
+      },
+      {
+        "command": "gito.openWorktree",
+        "title": "Git'o: Open Worktree"
+      },
+      {
+        "command": "gito.openChanges",
+        "title": "Git'o: Open Changes"
+      },
+      {
+        "command": "gito.openPullRequests",
+        "title": "Git'o: Open Pull Requests"
+      },
+      {
+        "command": "gito.openCommits",
+        "title": "Git'o: Open Commits"
+      },
+      {
+        "command": "gito.openBranches",
+        "title": "Git'o: Open Branches"
+      },
+      {
+        "command": "gito.openWorktrees",
+        "title": "Git'o: Open Worktrees"
+      },
+      {
+        "command": "gito.onboarding.openOrChooseRepository",
+        "title": "Git'o: Open or Choose a Git Repository"
+      },
+      {
+        "command": "gito.onboarding.openHome",
+        "title": "Git'o: Open Git'o Home"
+      },
+      {
+        "command": "gito.onboarding.showSourceControlSteps",
+        "title": "Git'o: Show Source Control Visibility Steps"
+      },
+      {
+        "command": "gito.onboarding.confirmSourceControlHidden",
+        "title": "Git'o: Confirm Source Control Was Manually Hidden"
+      },
+      {
+        "command": "gito.onboarding.acknowledgeSourceControlVisible",
+        "title": "Git'o: Keep Source Control Visible"
+      },
+      {
+        "command": "gito.onboarding.connectGitHub",
+        "title": "Git'o: Connect GitHub"
+      },
+      {
+        "command": "gito.onboarding.skipGitHub",
+        "title": "Git'o: Keep GitHub Disconnected"
+      },
+      {
+        "command": "gito.onboarding.openSetup",
+        "title": "Git'o: Open Setup"
+      },
+      {
+        "command": "gito.diff.open",
+        "title": "Git'o: Open Guided Diff"
+      },
+      {
+        "command": "gito.diff.openSingleFile",
+        "title": "Git'o: Compare Single File"
+      },
+      {
+        "command": "gito.diff.openRepository",
+        "title": "Git'o: Compare Repository"
+      },
+      {
+        "command": "gito.diff.review",
+        "title": "Git'o: Review Changes"
+      },
+      {
+        "command": "gito.diff.whitespace",
+        "title": "Git'o: Review Changes (Ignore Whitespace)"
+      },
+      {
+        "command": "gito.diff.nextFile",
+        "title": "Git'o: Next Diff File"
+      },
+      {
+        "command": "gito.diff.previousFile",
+        "title": "Git'o: Previous Diff File"
+      },
+      {
+        "command": "gito.diff.nextChange",
+        "title": "Git'o: Next Diff Change"
+      },
+      {
+        "command": "gito.diff.previousChange",
+        "title": "Git'o: Previous Diff Change"
+      },
+      {
+        "command": "gito.diff.swapSides",
+        "title": "Git'o: Swap Diff Sides"
+      },
+      {
+        "command": "gito.diff.reopen",
+        "title": "Git'o: Reopen Last Diff"
+      },
+      {
+        "command": "gito.diff.changeOptions",
+        "title": "Git'o: Change Diff Options"
+      },
+      {
+        "command": "gito.compare.open",
+        "title": "Git'o: Compare References"
+      },
+      {
+        "command": "gito.compare.search",
+        "title": "Git'o: Search Commits"
+      },
+      {
+        "command": "gito.compare.actions",
+        "title": "Git'o: Compare Actions"
+      },
+      {
+        "command": "gito.compare.recent",
+        "title": "Git'o: Reopen Recent Comparison"
+      },
+      {
+        "command": "gito.openConflicts",
+        "title": "Git'o: Resolve Conflicts"
+      },
+      {
+        "command": "gito.openOperations",
+        "title": "Git'o: Open Operations Center"
+      },
+      {
+        "command": "gito.history.toggleBlame",
+        "title": "Git'o: Toggle Current-Line Blame"
+      },
+      {
+        "command": "gito.history.openFileHistory",
+        "title": "Git'o: Open File History"
+      },
+      {
+        "command": "gito.history.openLineHistory",
+        "title": "Git'o: Open Line History"
+      },
+      {
+        "command": "gito.history.openContributors",
+        "title": "Git'o: Show Contributors"
+      },
+      {
+        "command": "gito.history.search",
+        "title": "Git'o: Search History"
+      },
+      {
+        "command": "gito.history.previousRevision",
+        "title": "Git'o: Open Previous Revision"
+      },
+      {
+        "command": "gito.history.nextRevision",
+        "title": "Git'o: Open Next Revision"
+      },
+      {
+        "command": "gito.history.openCommit",
+        "title": "Git'o: Open Commit Details"
+      },
+      {
+        "command": "gito.graph.open",
+        "title": "Git'o: Open Commit Graph"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "gito.openHome",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.refreshDashboard",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.developerDiagnostics.open",
+          "when": "config.gito.developerDiagnostics"
+        },
+        {
+          "command": "gito.developerDiagnostics.toggle",
+          "when": "true"
+        },
+        {
+          "command": "gito.stageChanges",
+          "when": "false"
+        },
+        {
+          "command": "gito.unstageChanges",
+          "when": "false"
+        },
+        {
+          "command": "gito.stageAll",
+          "when": "false"
+        },
+        {
+          "command": "gito.unstageAll",
+          "when": "false"
+        },
+        {
+          "command": "gito.openDiff",
+          "when": "false"
+        },
+        {
+          "command": "gito.discardChanges",
+          "when": "false"
+        },
+        {
+          "command": "gito.commit",
+          "when": "false"
+        },
+        {
+          "command": "gito.fetch",
+          "when": "false"
+        },
+        {
+          "command": "gito.pull",
+          "when": "false"
+        },
+        {
+          "command": "gito.push",
+          "when": "false"
+        },
+        {
+          "command": "gito.sync",
+          "when": "false"
+        },
+        {
+          "command": "gito.copyCommitSha",
+          "when": "false"
+        },
+        {
+          "command": "gito.copyCommitMessage",
+          "when": "false"
+        },
+        {
+          "command": "gito.checkoutBranch",
+          "when": "false"
+        },
+        {
+          "command": "gito.createBranch",
+          "when": "false"
+        },
+        {
+          "command": "gito.publishBranch",
+          "when": "false"
+        },
+        {
+          "command": "gito.deleteBranch",
+          "when": "false"
+        },
+        {
+          "command": "gito.forceDeleteBranch",
+          "when": "false"
+        },
+        {
+          "command": "gito.openCommitFileDiff",
+          "when": "false"
+        },
+        {
+          "command": "gito.createWorktree",
+          "when": "false"
+        },
+        {
+          "command": "gito.removeWorktree",
+          "when": "false"
+        },
+        {
+          "command": "gito.openWorktree",
+          "when": "false"
+        },
+        {
+          "command": "gito.openChanges",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.openPullRequests",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.openCommits",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.openBranches",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.openWorktrees",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.onboarding.openOrChooseRepository",
+          "when": "!gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.onboarding.openHome",
+          "when": "gito.onboarding.localRepositoryAvailable && !gito.onboarding.repositoryHomeOpened"
+        },
+        {
+          "command": "gito.onboarding.showSourceControlSteps",
+          "when": "!gito.onboarding.sourceControlVisibilityPreferenceAcknowledged"
+        },
+        {
+          "command": "gito.onboarding.confirmSourceControlHidden",
+          "when": "!gito.onboarding.sourceControlVisibilityPreferenceAcknowledged"
+        },
+        {
+          "command": "gito.onboarding.acknowledgeSourceControlVisible",
+          "when": "!gito.onboarding.sourceControlVisibilityPreferenceAcknowledged"
+        },
+        {
+          "command": "gito.onboarding.connectGitHub",
+          "when": "!gito.onboarding.githubConnected"
+        },
+        {
+          "command": "gito.onboarding.skipGitHub",
+          "when": "!gito.onboarding.githubSetupCompleted"
+        },
+        {
+          "command": "gito.onboarding.openSetup",
+          "when": "true"
+        },
+        {
+          "command": "gito.diff.open",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.diff.openSingleFile",
+          "when": "false"
+        },
+        {
+          "command": "gito.diff.openRepository",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.diff.review",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.diff.whitespace",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.diff.nextFile",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && gito.diff.sessionActive"
+        },
+        {
+          "command": "gito.diff.previousFile",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && gito.diff.sessionActive"
+        },
+        {
+          "command": "gito.diff.nextChange",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && gito.diff.sessionActive"
+        },
+        {
+          "command": "gito.diff.previousChange",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && gito.diff.sessionActive"
+        },
+        {
+          "command": "gito.diff.swapSides",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && gito.diff.sessionActive"
+        },
+        {
+          "command": "gito.diff.reopen",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && gito.diff.sessionActive"
+        },
+        {
+          "command": "gito.diff.changeOptions",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && gito.diff.sessionActive"
+        },
+        {
+          "command": "gito.compare.open",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.compare.search",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.compare.actions",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && (gito.compare.sessionActive || gito.compare.operationActive)"
+        },
+        {
+          "command": "gito.compare.recent",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.openConflicts",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.openOperations",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.history.toggleBlame",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && editorLangId != '' && resourceScheme == file"
+        },
+        {
+          "command": "gito.history.openFileHistory",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && editorLangId != '' && resourceScheme == file"
+        },
+        {
+          "command": "gito.history.openLineHistory",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && editorLangId != '' && resourceScheme == file"
+        },
+        {
+          "command": "gito.history.openContributors",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable && editorLangId != '' && resourceScheme == file"
+        },
+        {
+          "command": "gito.history.search",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        },
+        {
+          "command": "gito.history.previousRevision",
+          "when": "false"
+        },
+        {
+          "command": "gito.history.nextRevision",
+          "when": "false"
+        },
+        {
+          "command": "gito.history.openCommit",
+          "when": "false"
+        },
+        {
+          "command": "gito.graph.open",
+          "when": "gito.workspaceTrusted && gito.onboarding.localRepositoryAvailable"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "gito.diff.openSingleFile",
+          "when": "gito.workspaceTrusted && resourceScheme == file",
+          "group": "navigation@30"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "gito.diff.openSingleFile",
+          "when": "gito.workspaceTrusted && (scmResourceState == modified || scmResourceState == staged || scmResourceState == added || scmResourceState == deleted)",
+          "group": "navigation@30"
+        }
+      ]
+    },
+    "walkthroughs": [
+      {
+        "id": "setup",
+        "title": "Set up Git'o",
+        "description": "Start with local Git in a trusted workspace. Cloud providers are optional.",
+        "steps": [
+          {
+            "id": "open-or-choose-repository",
+            "title": "Open a local Git repository",
+            "description": "Git'o uses VS Code's bundled Git extension. [Open or choose a Git repository](command:gito.onboarding.openOrChooseRepository) in the native folder picker. Local Git mutations require a trusted workspace; untrusted workspaces may expose read-only inspection. This step completes only after a repository is available.",
+            "media": {
+              "svg": "media/onboarding/setup.svg",
+              "altText": "Git'o setup illustration: a violet-to-blue Git'o mark links a local repository folder to a repository summary card."
+            },
+            "completionEvents": [
+              "onContext:gito.onboarding.localRepositoryAvailable"
+            ]
+          },
+          {
+            "id": "open-repository-home",
+            "title": "Open Git'o Home",
+            "description": "[Open Git'o Home](command:gito.onboarding.openHome) to work with your local repository. No provider connection is required.",
+            "media": {
+              "svg": "media/onboarding/setup.svg",
+              "altText": "Git'o setup illustration: a violet-to-blue Git'o mark links a local repository folder to a repository summary card."
+            },
+            "completionEvents": [
+              "onContext:gito.onboarding.repositoryHomeOpened"
+            ]
+          },
+          {
+            "id": "keep-the-bundled-git-engine",
+            "title": "Keep VS Code Git enabled",
+            "description": "Keep VS Code's bundled `vscode.git` extension enabled: Git'o uses it for repository discovery, state, and ordinary local mutations. CLI-backed features use a configured absolute `git.path`, otherwise the executable exposed by the bundled extension. Native worktree create/remove requires a desktop `file:` repository; remote Extension Host behavior is not live-proven. Source Control can stay visible; hiding it is optional if you prefer less duplicate navigation. [Show optional hiding steps](command:gito.onboarding.showSourceControlSteps), then [confirm it was hidden](command:gito.onboarding.confirmSourceControlHidden), or [keep Source Control visible](command:gito.onboarding.acknowledgeSourceControlVisible). Git'o works either way.",
+            "media": {
+              "svg": "media/onboarding/setup.svg",
+              "altText": "Git'o setup illustration: a violet-to-blue Git'o mark links a local repository folder to a repository summary card."
+            },
+            "completionEvents": [
+              "onContext:gito.onboarding.sourceControlVisibilityPreferenceAcknowledged"
+            ]
+          },
+          {
+            "id": "connect-github-optional",
+            "title": "Connect GitHub (optional)",
+            "description": "Optional GitHub.com pull-request data. [Connect GitHub](command:gito.onboarding.connectGitHub) only when you choose to sign in through VS Code's GitHub provider, or [keep GitHub disconnected](command:gito.onboarding.skipGitHub) to finish setup without cloud data. The provider controls the `repo` and `read:user` session scopes; `repo` can grant access broader than Git'o's read-only operations. Git'o has no account or PAT flow, and in a trusted workspace local Git does not depend on it.",
+            "media": {
+              "svg": "media/onboarding/setup.svg",
+              "altText": "Git'o setup illustration: a violet-to-blue Git'o mark links a local repository folder to a repository summary card."
+            },
+            "completionEvents": [
+              "onContext:gito.onboarding.githubSetupCompleted"
+            ]
+          },
+          {
+            "id": "privacy-completion-and-reopening",
+            "title": "Finish setup and reopen it later",
+            "description": "Git'o has no account, backend, telemetry, analytics, or PAT flow. In a trusted workspace, local Git works when every provider step is skipped; untrusted workspaces may expose read-only inspection only. Setup never opens a browser or sends a provider request automatically. Reopen this walkthrough any time with [Git'o: Open Setup](command:gito.onboarding.openSetup).",
+            "media": {
+              "svg": "media/onboarding/setup.svg",
+              "altText": "Git'o setup illustration: a violet-to-blue Git'o mark links a local repository folder to a repository summary card."
+            },
+            "completionEvents": [
+              "stepSelected"
+            ]
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "Git'o",
+      "properties": {
+        "gito.authorEmails": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "email"
+          },
+          "default": [],
+          "description": "Additional author email addresses used for commit activity."
+        },
+        "gito.smartCommit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Offer to commit all changes when no changes are staged."
+        },
+        "gito.developerDiagnostics": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "Enable local Git'o developer diagnostics. Records fixed event names, outcomes, durations, and suppressed-event counts only; never credentials, repository content, commit messages, or full paths. Nothing is uploaded."
+        },
+        "gito.diff.defaultContextLines": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Default unchanged lines shown around Git'o diff changes."
+        },
+        "gito.diff.maxFiles": {
+          "type": "number",
+          "default": 500,
+          "minimum": 1,
+          "maximum": 5000,
+          "description": "Maximum files retained in a Git'o repository diff."
+        },
+        "gito.history.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Master gate for Git'o history decorations and CodeLens; history commands remain available regardless."
+        },
+        "gito.history.blame.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable current-line Git blame decorations only when gito.history.enabled is true."
+        },
+        "gito.history.codeLens.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable recent history CodeLens only when gito.history.enabled is true."
+        },
+        "gito.history.maxFileSizeBytes": {
+          "type": "number",
+          "default": 1000000,
+          "minimum": 1,
+          "maximum": 10000000,
+          "description": "Maximum editor file size inspected by Git'o history features."
+        },
+        "gito.history.cacheEntryLimit": {
+          "type": "number",
+          "default": 64,
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Maximum Git'o history entries retained in memory."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gito",
+          "title": "Git'o",
+          "icon": "media/gito.svg"
+        }
+      ]
+    },
+    "views": {
+      "gito": [
+        {
+          "id": "gito.navigation",
+          "name": "Git'o",
+          "type": "tree",
+          "when": "gito.workspaceTrusted"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check:format": "prettier --check .",
+    "format": "prettier --write .",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:contract": "vitest run test/contract",
+    "test:accessibility": "vitest run test/accessibility",
+    "test:security": "vitest run test/security",
+    "test:performance": "vitest run --config vitest.performance.config.ts",
+    "test:package": "vitest run test/package",
+    "test:production-audit-policy": "node --test test/security/production-audit.test.mjs",
+    "test:release-policy": "node --test test/unit/release-policy.test.mjs",
+    "test:watch": "vitest",
+    "test:integration": "node scripts/run-extension-host-tests.mjs",
+    "test:installed-vsix": "node scripts/run-installed-vsix-tests.mjs",
+    "test:visual-vsix": "node scripts/run-installed-vsix-visual-tests.mjs",
+    "test:visual-baselines": "node scripts/validate-visual-baselines.mjs",
+    "test:packaged-vsix": "node scripts/run-packaged-extension-tests.mjs",
+    "verify:static": "npm run check:format && npm run lint && npm run typecheck && npm run test:release-policy && npm test && npm run test:performance && npm run test:production-audit-policy",
+    "package:vsix": "node scripts/package-release.mjs",
+    "package:verify": "node scripts/validate-package-contents.mjs",
+    "check:bundle": "node scripts/check-bundle-budgets.mjs",
+    "security:scan": "node scripts/scan-current-tree-secrets.mjs",
+    "audit:production": "npm audit --omit=dev --audit-level=high",
+    "test:production-audit": "node scripts/production-audit.mjs",
+    "release": "semantic-release",
+    "verify": "npm run verify:static && npm run build && npm run check:bundle && npm run package:vsix && npm run package:verify && npm run test:package && npm run test:production-audit && npm run audit:production && npm run security:scan"
+  },
+  "dependencies": {
+    "@octokit/graphql": "^9.0.1",
+    "@octokit/request": "^10.0.7",
+    "@vscode/codicons": "^0.0.44",
+    "preact": "^10.27.1",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.34.0",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/github": "^11.0.1",
+    "@semantic-release/release-notes-generator": "^14.1.0",
+    "@testing-library/preact": "^3.2.4",
+    "@types/node": "^24.3.0",
+    "@types/vscode": "^1.132.0",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.6.0",
+    "axe-core": "^4.10.3",
+    "esbuild": "^0.25.9",
+    "eslint": "^9.34.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.3.0",
+    "js-yaml": "^4.3.1",
+    "jsdom": "^26.1.0",
+    "msw": "^2.11.1",
+    "pixelmatch": "6.0.0",
+    "playwright-core": "1.55.0",
+    "pngjs": "7.0.0",
+    "prettier": "^3.6.2",
+    "semantic-release": "^24.2.9",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.41.0",
+    "vitest": "^3.2.4"
+  }
+}

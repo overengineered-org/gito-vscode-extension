@@ -1,0 +1,849 @@
+:root {
+  --gito-graph-background: var(--vscode-editor-background);
+  --gito-graph-surface: var(--vscode-sideBar-background);
+  --gito-graph-raised: var(--vscode-editorWidget-background);
+  --gito-graph-input: var(--vscode-input-background);
+  --gito-graph-border: var(--vscode-panel-border);
+  --gito-graph-strong-border: var(
+    --vscode-contrastBorder,
+    var(--vscode-panel-border)
+  );
+  --gito-graph-text: var(--vscode-foreground);
+  --gito-graph-muted: var(--vscode-descriptionForeground);
+  --gito-graph-focus: var(--vscode-focusBorder);
+  --gito-graph-hover: var(--vscode-list-hoverBackground);
+  --gito-graph-selection: var(--vscode-list-activeSelectionBackground);
+  --gito-graph-link: var(--vscode-textLink-foreground);
+  --gito-graph-success: var(--vscode-testing-iconPassed);
+  --gito-graph-warning: var(--vscode-notificationsWarningIcon-foreground);
+  --gito-graph-error: var(--vscode-testing-iconFailed);
+  --gito-graph-lane-0: var(--vscode-charts-blue);
+  --gito-graph-lane-1: var(--vscode-charts-green);
+  --gito-graph-lane-2: var(--vscode-charts-yellow);
+  --gito-graph-lane-3: var(--vscode-charts-orange);
+  --gito-graph-lane-4: var(--vscode-charts-red);
+  --gito-graph-lane-5: var(--vscode-charts-purple);
+  --gito-graph-lane-6: var(--vscode-charts-blue);
+  --gito-graph-lane-7: var(--vscode-charts-green);
+  --gito-graph-lane-8: var(--vscode-charts-yellow);
+  --gito-graph-lane-9: var(--vscode-charts-orange);
+  --gito-graph-lane-10: var(--vscode-charts-red);
+  --gito-graph-lane-11: var(--vscode-charts-purple);
+}
+
+.graph-experience {
+  min-width: 0;
+  min-height: 100vh;
+  padding: clamp(0.85rem, 2vw, 1.5rem);
+  color: var(--gito-graph-text);
+  background: var(--gito-graph-background);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  font-synthesis: none;
+}
+
+.graph-experience,
+.graph-experience * {
+  box-sizing: border-box;
+}
+
+.graph-experience h1,
+.graph-experience h2,
+.graph-experience h3,
+.graph-experience p {
+  margin: 0;
+}
+
+.graph-experience button,
+.graph-experience input,
+.graph-experience select {
+  font: inherit;
+}
+
+.graph-experience button {
+  color: inherit;
+}
+
+.graph-experience button:focus-visible,
+.graph-experience input:focus-visible,
+.graph-experience select:focus-visible,
+.graph-treegrid:focus-visible,
+.graph-row:focus-visible,
+.graph-minimap-marker:focus-visible {
+  outline: 2px solid var(--gito-graph-focus);
+  outline-offset: 2px;
+}
+
+.graph-experience button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.graph-shell {
+  width: min(100%, 144rem);
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.graph-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+  margin-bottom: 1rem;
+}
+
+.graph-title-block {
+  display: grid;
+  gap: 0.32rem;
+  min-width: 0;
+}
+
+.graph-title {
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.graph-subtitle {
+  color: var(--gito-graph-muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.graph-header-status {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--gito-graph-muted);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.graph-status-dot {
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 50%;
+  background: var(--gito-graph-success);
+}
+
+.graph-header-status.is-error {
+  color: var(--gito-graph-error);
+}
+
+.graph-status-dot.is-error {
+  background: var(--gito-graph-error);
+}
+
+.graph-toolbar {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(9rem, 12rem) auto auto;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  margin-bottom: 0.65rem;
+  padding: 0.65rem;
+  border: 1px solid var(--gito-graph-border);
+  background: var(--gito-graph-surface);
+}
+
+.graph-filter-input,
+.graph-scope-select {
+  min-width: 0;
+  min-height: 2.35rem;
+  padding: 0 0.68rem;
+  border: 1px solid var(--gito-graph-border);
+  border-radius: 2px;
+  color: var(--gito-graph-text);
+  background: var(--gito-graph-input);
+}
+
+.graph-filter-input::placeholder {
+  color: var(--gito-graph-muted);
+}
+
+.graph-check-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  min-height: 2.35rem;
+  padding: 0 0.35rem;
+  color: var(--gito-graph-muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.graph-check-control input {
+  accent-color: var(--gito-graph-link);
+}
+
+.graph-announcement {
+  min-height: 1.25rem;
+  margin-bottom: 0.45rem;
+  color: var(--gito-graph-muted);
+  font-size: 0.78rem;
+}
+
+.graph-error {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--gito-graph-error);
+  color: var(--gito-graph-text);
+  background: var(--gito-graph-raised);
+  font-size: 0.78rem;
+}
+
+.graph-error .codicon {
+  flex: 0 0 auto;
+  color: var(--gito-graph-error);
+}
+
+.graph-error button {
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-height: 1.9rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--gito-graph-error);
+  color: var(--gito-graph-text);
+  background: var(--gito-graph-input);
+  cursor: pointer;
+}
+
+.graph-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem);
+  min-width: 0;
+  min-height: 32rem;
+  border: 1px solid var(--gito-graph-border);
+  background: var(--gito-graph-surface);
+}
+
+.graph-main-region {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.graph-treegrid {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.graph-table-header {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr) 2rem;
+  align-items: center;
+  min-height: 2.1rem;
+  border-bottom: 1px solid var(--gito-graph-border);
+  color: var(--gito-graph-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.graph-table-header span {
+  padding: 0 0.7rem;
+}
+
+.graph-scroll-region {
+  position: relative;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.graph-scroll-content {
+  position: relative;
+  min-width: 34rem;
+}
+
+.graph-row-spacer {
+  pointer-events: none;
+}
+
+.graph-row-window {
+  position: relative;
+  min-width: 0;
+}
+
+.graph-row {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr) 2rem;
+  align-items: stretch;
+  min-width: 0;
+  height: 3rem;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--gito-graph-border) 64%, transparent);
+  cursor: default;
+  user-select: none;
+}
+
+.graph-row:hover {
+  background: var(--gito-graph-hover);
+}
+
+.graph-row.is-selected {
+  background: var(--gito-graph-selection);
+}
+
+.graph-lane-cell,
+.graph-commit-cell,
+.graph-row-action-cell {
+  min-width: 0;
+}
+
+.graph-lane-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 0.55rem;
+}
+
+.graph-lane-diagram {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.graph-lane-line,
+.graph-lane-edge {
+  fill: none;
+  stroke-width: 2;
+}
+
+.graph-lane-line {
+  opacity: 0.58;
+}
+
+.graph-lane-edge {
+  opacity: 0.82;
+}
+
+.graph-lane-edge-continuation {
+  opacity: 0.72;
+}
+
+.graph-commit-node {
+  fill: var(--gito-graph-surface);
+  stroke-width: 2.5;
+}
+
+.graph-lane-color-0 {
+  stroke: var(--gito-graph-lane-0);
+}
+.graph-lane-color-1 {
+  stroke: var(--gito-graph-lane-1);
+}
+.graph-lane-color-2 {
+  stroke: var(--gito-graph-lane-2);
+}
+.graph-lane-color-3 {
+  stroke: var(--gito-graph-lane-3);
+}
+.graph-lane-color-4 {
+  stroke: var(--gito-graph-lane-4);
+}
+.graph-lane-color-5 {
+  stroke: var(--gito-graph-lane-5);
+}
+.graph-lane-color-6 {
+  stroke: var(--gito-graph-lane-6);
+}
+.graph-lane-color-7 {
+  stroke: var(--gito-graph-lane-7);
+}
+.graph-lane-color-8 {
+  stroke: var(--gito-graph-lane-8);
+}
+.graph-lane-color-9 {
+  stroke: var(--gito-graph-lane-9);
+}
+.graph-lane-color-10 {
+  stroke: var(--gito-graph-lane-10);
+}
+.graph-lane-color-11 {
+  stroke: var(--gito-graph-lane-11);
+}
+
+.graph-commit-cell {
+  display: grid;
+  align-content: center;
+  gap: 0.16rem;
+  overflow: hidden;
+  padding: 0.35rem 0.7rem;
+}
+
+.graph-row-primary-line,
+.graph-row-secondary-line {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.42rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.graph-row-primary-line {
+  color: var(--gito-graph-text);
+  font-size: 0.83rem;
+}
+
+.graph-row-secondary-line {
+  color: var(--gito-graph-muted);
+  font-size: 0.71rem;
+}
+
+.graph-commit-sha {
+  flex: 0 0 auto;
+  color: var(--gito-graph-link);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.74rem;
+}
+
+.graph-commit-subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-secondary-separator {
+  color: var(--gito-graph-border);
+}
+
+.graph-reference-list {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.28rem;
+  overflow: hidden;
+}
+
+.graph-reference-badge,
+.graph-reference-overflow,
+.graph-live-label {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.22rem;
+  min-height: 1.05rem;
+  max-width: 15rem;
+  overflow: hidden;
+  padding: 0.08rem 0.34rem;
+  border: 1px solid var(--gito-graph-border);
+  border-radius: 2px;
+  color: var(--gito-graph-muted);
+  font-size: 0.64rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-reference-head,
+.graph-reference-local {
+  border-color: color-mix(
+    in srgb,
+    var(--gito-graph-success) 48%,
+    var(--gito-graph-border)
+  );
+  color: var(--gito-graph-success);
+}
+
+.graph-reference-remote {
+  border-color: color-mix(
+    in srgb,
+    var(--gito-graph-link) 48%,
+    var(--gito-graph-border)
+  );
+  color: var(--gito-graph-link);
+}
+
+.graph-reference-tag {
+  border-color: color-mix(
+    in srgb,
+    var(--gito-graph-warning) 52%,
+    var(--gito-graph-border)
+  );
+  color: var(--gito-graph-warning);
+}
+
+.graph-reference-stash {
+  color: var(--vscode-charts-purple);
+}
+
+.graph-reference-overflow {
+  color: var(--gito-graph-muted);
+}
+
+.graph-status-symbol {
+  color: var(--gito-graph-link);
+  font-size: 1rem;
+}
+
+.graph-live-label {
+  border-color: var(--gito-graph-success);
+  color: var(--gito-graph-success);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+}
+
+.graph-row-action-cell {
+  display: grid;
+  place-items: center;
+  color: var(--gito-graph-muted);
+}
+
+.graph-row-action-cell .codicon {
+  font-size: 0.85rem;
+}
+
+.graph-empty-state,
+.graph-loading-state {
+  display: grid;
+  min-height: 16rem;
+  place-items: center;
+  padding: 2rem;
+  color: var(--gito-graph-muted);
+  font-size: 0.84rem;
+  text-align: center;
+}
+
+.graph-minimap {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  border-left: 1px solid var(--gito-graph-border);
+  background: var(--gito-graph-raised);
+}
+
+.graph-minimap-heading,
+.graph-details-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.1rem;
+  padding: 0 0.8rem;
+  border-bottom: 1px solid var(--gito-graph-border);
+  color: var(--gito-graph-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.graph-minimap-markers {
+  display: grid;
+  align-content: start;
+  gap: 1px;
+  overflow: auto;
+  padding: 0.55rem;
+}
+
+.graph-minimap-error {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.35rem;
+  color: var(--gito-graph-error);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.graph-minimap-error button {
+  min-height: 24px;
+  padding: 0 0.55rem;
+  border: 1px solid var(--gito-graph-error);
+  color: var(--gito-graph-text);
+  background: var(--gito-graph-input);
+  cursor: pointer;
+}
+
+.graph-minimap-marker {
+  display: grid;
+  grid-template-columns: 1fr 2.2rem;
+  align-items: center;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.graph-minimap-marker:hover,
+.graph-minimap-marker.is-selected {
+  background: var(--gito-graph-hover);
+}
+
+.graph-minimap-lines {
+  display: flex;
+  align-items: end;
+  height: 0.78rem;
+  gap: 1px;
+}
+
+.graph-minimap-line {
+  width: 2px;
+  height: 100%;
+  background: var(--gito-graph-link);
+  opacity: 0.72;
+}
+
+.graph-minimap-line.is-merge {
+  background: var(--gito-graph-warning);
+}
+
+.graph-minimap-line.graph-lane-color-0 {
+  background: var(--gito-graph-lane-0);
+}
+.graph-minimap-line.graph-lane-color-1 {
+  background: var(--gito-graph-lane-1);
+}
+.graph-minimap-line.graph-lane-color-2 {
+  background: var(--gito-graph-lane-2);
+}
+.graph-minimap-line.graph-lane-color-3 {
+  background: var(--gito-graph-lane-3);
+}
+.graph-minimap-line.graph-lane-color-4 {
+  background: var(--gito-graph-lane-4);
+}
+.graph-minimap-line.graph-lane-color-5 {
+  background: var(--gito-graph-lane-5);
+}
+.graph-minimap-line.graph-lane-color-6 {
+  background: var(--gito-graph-lane-6);
+}
+.graph-minimap-line.graph-lane-color-7 {
+  background: var(--gito-graph-lane-7);
+}
+.graph-minimap-line.graph-lane-color-8 {
+  background: var(--gito-graph-lane-8);
+}
+.graph-minimap-line.graph-lane-color-9 {
+  background: var(--gito-graph-lane-9);
+}
+.graph-minimap-line.graph-lane-color-10 {
+  background: var(--gito-graph-lane-10);
+}
+.graph-minimap-line.graph-lane-color-11 {
+  background: var(--gito-graph-lane-11);
+}
+
+.graph-minimap-count {
+  color: var(--gito-graph-muted);
+  font-size: 0.6rem;
+  text-align: right;
+}
+
+.graph-details {
+  min-width: 0;
+  border-top: 1px solid var(--gito-graph-border);
+  background: var(--gito-graph-raised);
+}
+
+.graph-details-body {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.9rem;
+}
+
+.graph-details-empty {
+  color: var(--gito-graph-muted);
+  font-size: 0.8rem;
+}
+
+.graph-details-title {
+  overflow: hidden;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.graph-details-sha {
+  color: var(--gito-graph-link);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.72rem;
+}
+
+.graph-details-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+  color: var(--gito-graph-muted);
+  font-size: 0.72rem;
+}
+
+.graph-details-meta dt {
+  margin-bottom: 0.16rem;
+  font-size: 0.63rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.graph-details-meta dd {
+  color: var(--gito-graph-text);
+  overflow-wrap: anywhere;
+}
+
+.graph-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.graph-details-error {
+  margin: 0.65rem 0 0;
+  color: var(--gito-graph-error);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.graph-metric {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+  padding: 0.48rem;
+  border: 1px solid var(--gito-graph-border);
+}
+
+.graph-metric-value {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.82rem;
+}
+
+.graph-metric-label {
+  color: var(--gito-graph-muted);
+  font-size: 0.62rem;
+  white-space: nowrap;
+}
+
+.graph-action-list {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.graph-action-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--gito-graph-border);
+  border-radius: 2px;
+  background: var(--gito-graph-input);
+  cursor: pointer;
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.graph-action-button:hover {
+  background: var(--gito-graph-hover);
+}
+
+.graph-action-button.graph-action-primary {
+  border-color: var(--gito-graph-focus);
+}
+
+.graph-truncation-note {
+  padding: 0.55rem 0.75rem;
+  border-top: 1px solid var(--gito-graph-border);
+  color: var(--gito-graph-warning);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 62rem) {
+  .graph-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .graph-minimap {
+    display: none;
+  }
+
+  .graph-details {
+    border-top: 1px solid var(--gito-graph-border);
+  }
+}
+
+@media (max-width: 42rem) {
+  .graph-experience {
+    padding: 0.75rem 0.55rem;
+  }
+
+  .graph-header {
+    align-items: start;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .graph-toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.65fr);
+  }
+
+  .graph-check-control {
+    min-width: 0;
+    padding: 0;
+  }
+
+  .graph-table-header,
+  .graph-row {
+    grid-template-columns: 7.8rem minmax(0, 1fr) 1.7rem;
+  }
+
+  .graph-scroll-content {
+    min-width: 27rem;
+  }
+
+  .graph-row-primary-line {
+    font-size: 0.78rem;
+  }
+
+  .graph-row-secondary-line {
+    font-size: 0.66rem;
+  }
+
+  .graph-details-meta {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (forced-colors: active) {
+  .graph-lane-line,
+  .graph-lane-edge,
+  .graph-commit-node {
+    stroke: CanvasText;
+  }
+
+  .graph-status-dot,
+  .graph-minimap-line {
+    background: CanvasText;
+  }
+
+  .graph-row.is-selected {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graph-experience * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

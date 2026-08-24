@@ -1,0 +1,4 @@
+title = "Git'o secret scanning policy"
+
+[extend]
+useDefault = true

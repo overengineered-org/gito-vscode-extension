@@ -1,0 +1,28 @@
+{
+  "name": "gito-installed-vsix-test-driver",
+  "displayName": "Git'o Installed VSIX Test Driver",
+  "description": "Local integration driver for the exact installed Git'o VSIX.",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "overengineered-org",
+  "engines": {
+    "vscode": "^1.132.0"
+  },
+  "main": "./index.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "gito-installed-proof",
+        "aliases": [
+          "Git'o Installed Proof"
+        ],
+        "extensions": [
+          ".gito-proof"
+        ]
+      }
+    ]
+  }
+}

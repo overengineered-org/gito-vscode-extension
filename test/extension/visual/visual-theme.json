@@ -1,0 +1,22 @@
+{
+  "name": "Git'o Visual QA",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#17152a",
+    "editor.foreground": "#f7f3ff",
+    "editorWidget.background": "#211d39",
+    "sideBar.background": "#120f22",
+    "input.background": "#282248",
+    "panel.border": "#8a76d6",
+    "contrastBorder": "#b6a4ff",
+    "list.hoverBackground": "#3a2e62",
+    "list.activeSelectionBackground": "#4d3d83",
+    "focusBorder": "#d8caff",
+    "textLink.foreground": "#d8caff",
+    "descriptionForeground": "#c4b9df",
+    "charts.blue": "#8fc7ff",
+    "testing.iconPassed": "#9be7c4",
+    "notificationsWarningIcon.foreground": "#ffd479",
+    "testing.iconFailed": "#ff9aab"
+  }
+}

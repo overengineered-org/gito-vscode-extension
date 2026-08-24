@@ -1,0 +1,140 @@
+name: Visual baseline candidate capture
+
+on:
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: CI run ID with successful pre-release jobs and installed-tested-visual-input
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  capture:
+    name: Capture candidate evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: visual-baseline-approval
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - name: Select exact pre-release CI run and commit
+        id: select-ci-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh run view "$CI_RUN_ID" --repo "$GH_REPO" --json databaseId,headSha,headBranch,event,status,conclusion,workflowName,jobs)"
+          [[ "$(jq -r '.databaseId | tostring' <<<"$run_json")" == "$CI_RUN_ID" ]]
+          [[ "$(jq -r '.workflowName' <<<"$run_json")" == "CI and Release" ]]
+          [[ "$(jq -r '.headBranch' <<<"$run_json")" == "main" ]]
+          [[ "$(jq -r '.event' <<<"$run_json")" == "push" ]]
+          [[ "$(jq -r '.status' <<<"$run_json")" == "completed" ]]
+          run_conclusion="$(jq -r '.conclusion' <<<"$run_json")"
+          run_jobs="$(jq -c '.jobs' <<<"$run_json")"
+          required_job_names=(
+            "Tests"
+            "Installed VSIX Extension Host"
+            "Installed VSIX Visual Evidence (compare or candidate)"
+          )
+          for required_job_name in "${required_job_names[@]}"; do
+            jq -e --arg required_job_name "$required_job_name" \
+              'any(.[]; .name == $required_job_name and .status == "completed" and .conclusion == "success")' \
+              <<<"$run_jobs" >/dev/null
+          done
+          case "$run_conclusion" in
+            success)
+              ;;
+            failure)
+              failed_job_names="$(jq -r '[.[] | select(.conclusion != "success" and .conclusion != "skipped") | .name] | join("\n")' <<<"$run_jobs")"
+              [[ "$failed_job_names" == "GitHub Release" ]]
+              jq -e '
+                any(.[];
+                  .name == "GitHub Release" and
+                  any(.steps[]?;
+                    .name == "Require approved visual baselines for release" and
+                    .conclusion == "failure"
+                  )
+                )
+              ' <<<"$run_jobs" >/dev/null
+              ;;
+            *)
+              echo "Unsupported CI run conclusion: $run_conclusion" >&2
+              exit 1
+              ;;
+          esac
+          run_head_sha="$(jq -er '.headSha' <<<"$run_json")"
+          [[ "$run_head_sha" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin "$run_head_sha"
+          git checkout --detach "$run_head_sha"
+          [[ "$(git rev-parse HEAD)" == "$run_head_sha" ]]
+          echo "ci-run-id=$CI_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "commit-sha=$run_head_sha" >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      - name: Verify installed-tested visual artifact exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          artifact_json="$(gh api "repos/${GH_REPO}/actions/runs/${CI_RUN_ID}/artifacts")"
+          jq -e --arg artifact_name "installed-tested-visual-input" '
+            ([.artifacts[] |
+              select(
+                .name == $artifact_name and
+                .expired == false and
+                (.size_in_bytes // 0) > 0
+              )] | length) == 1
+          ' <<<"$artifact_json" >/dev/null
+      - name: Download exact installed-tested VSIX artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh run download "$CI_RUN_ID" --repo "$GH_REPO" --name installed-tested-visual-input --dir dist
+      - name: Verify exact installed-tested VSIX binding
+        id: visual-package
+        run: |
+          set -euo pipefail
+          mapfile -t vsix_files < <(find dist -maxdepth 1 -type f -name 'gito-*.vsix' -print)
+          test "${#vsix_files[@]}" -eq 1
+          vsix_path="${vsix_files[0]}"
+          package_version="$(node -p "require('./dist/release-metadata.json').version")"
+          node scripts/validate-installed-tested-artifact.mjs \
+            "$vsix_path" \
+            "${vsix_path}.sha256" \
+            dist/release-metadata.json \
+            "$package_version"
+          [[ "$(jq -er '.commitSha' dist/release-metadata.json)" == "$(git rev-parse HEAD)" ]]
+          [[ "$(jq -er '.sha256' dist/release-metadata.json)" == "$(sha256sum "$vsix_path" | awk '{print $1}')" ]]
+          echo "path=$vsix_path" >> "$GITHUB_OUTPUT"
+      - name: Capture real renderer candidates
+        env:
+          GITO_VISUAL_CAPTURE_ONLY: "1"
+          GITO_VISUAL_OUTPUT_DIR: ${{ runner.temp }}/gito-visual-artifacts
+        run: |
+          set -euo pipefail
+          xvfb-run --auto-servernum --server-args='-screen 0 1440x900x24' npm run test:visual-vsix -- "${{ steps.visual-package.outputs.path }}"
+      - name: Upload candidate evidence only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: warn
+          name: visual-baseline-candidates-${{ steps.select-ci-run.outputs.commit-sha }}
+          path: ${{ runner.temp }}/gito-visual-artifacts
+          retention-days: 30

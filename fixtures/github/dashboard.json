@@ -1,0 +1,117 @@
+{
+  "data": {
+    "viewer": {
+      "id": "MDQ6VXNlcjE=",
+      "login": "octocat",
+      "name": "The Octocat"
+    },
+    "rateLimit": {
+      "limit": 5000,
+      "remaining": 4998,
+      "resetAt": "2030-01-01T00:00:00Z",
+      "used": 2
+    },
+    "repository": {
+      "pullRequests": {
+        "totalCount": 3,
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        },
+        "nodes": [
+          {
+            "number": 42,
+            "title": "Improve review dashboard",
+            "body": "Review the dashboard changes.",
+            "updatedAt": "2030-01-01T00:00:00Z",
+            "isDraft": false,
+            "url": "https://github.com/octocat/Hello-World/pull/42",
+            "author": {
+              "login": "octocat",
+              "name": "The Octocat"
+            },
+            "comments": { "totalCount": 4 },
+            "reviewDecision": "APPROVED",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "statusCheckRollup": { "state": "SUCCESS" },
+            "reviewRequests": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": []
+            },
+            "reviews": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": [
+                {
+                  "author": { "login": "reviewer" },
+                  "state": "APPROVED"
+                }
+              ]
+            },
+            "headRefName": "feature/dashboard",
+            "baseRefName": "main"
+          },
+          {
+            "number": 43,
+            "title": "Needs requested changes",
+            "body": null,
+            "updatedAt": "2030-01-02T00:00:00Z",
+            "isDraft": false,
+            "url": "https://github.com/octocat/Hello-World/pull/43",
+            "author": {
+              "login": "contributor",
+              "name": "Contributor"
+            },
+            "comments": { "totalCount": 1 },
+            "reviewDecision": "CHANGES_REQUESTED",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "statusCheckRollup": { "state": "SUCCESS" },
+            "reviewRequests": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": [{ "requestedReviewer": { "login": "octocat" } }]
+            },
+            "reviews": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": [
+                {
+                  "author": { "login": "reviewer" },
+                  "state": "CHANGES_REQUESTED"
+                }
+              ]
+            },
+            "headRefName": "feature/changes",
+            "baseRefName": "main"
+          },
+          {
+            "number": 44,
+            "title": "Draft work",
+            "body": "Draft body.",
+            "updatedAt": "2030-01-03T00:00:00Z",
+            "isDraft": true,
+            "url": "https://github.com/octocat/Hello-World/pull/44",
+            "author": {
+              "login": "octocat",
+              "name": "The Octocat"
+            },
+            "comments": { "totalCount": 0 },
+            "reviewDecision": null,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "statusCheckRollup": null,
+            "reviewRequests": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": []
+            },
+            "reviews": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": []
+            },
+            "headRefName": "draft/dashboard",
+            "baseRefName": "main"
+          }
+        ]
+      }
+    }
+  }
+}

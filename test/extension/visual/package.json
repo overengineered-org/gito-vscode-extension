@@ -1,0 +1,24 @@
+{
+  "name": "gito-installed-vsix-visual-test-driver",
+  "displayName": "Git'o Installed VSIX Visual Test Driver",
+  "description": "Runtime visual evidence driver for the exact installed Git'o VSIX.",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "overengineered-org",
+  "engines": {
+    "vscode": ">=1.132.0"
+  },
+  "main": "./index.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Git'o Visual QA",
+        "uiTheme": "vs-dark",
+        "path": "./visual-theme.json"
+      }
+    ]
+  }
+}

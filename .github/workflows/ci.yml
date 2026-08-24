@@ -1,0 +1,685 @@
+name: CI and Release
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  static:
+    name: Static validation and VSIX
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify static sources
+        run: npm run verify:static
+      - name: Verify release policy
+        run: npm run test:release-policy
+      - name: Build production bundles
+        run: npm run build
+      - name: Verify bundle budgets
+        run: npm run check:bundle
+      - name: Package exact VSIX
+        run: npm run package:vsix
+      - name: Verify VSIX contents
+        run: npm run package:verify
+      - name: Verify production manifest
+        run: npm run test:production-audit
+      - name: Audit production dependencies
+        run: npm run audit:production
+      - name: Scan production privacy boundary
+        run: npm run security:scan
+
+  security:
+    name: Security tests
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - run: npm ci
+      - run: npm run build
+      - run: npm run package:vsix
+      - run: npm run test:security
+      - run: npm run test:production-audit-policy
+      - run: npm run security:scan
+
+  supported-vscode:
+    name: Supported VS Code
+    needs: static
+    strategy:
+      fail-fast: false
+      matrix:
+        vscode-version:
+          - "1.132.0"
+          - stable
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - run: npm ci
+      - run: npm run build
+      - name: Run minimum and current VS Code tests
+        env:
+          GITO_VSCODE_VERSION: ${{ matrix.vscode-version }}
+        run: xvfb-run --auto-servernum npm run test:integration
+
+  installed-vsix:
+    name: Installed VSIX Extension Host
+    needs: static
+    permissions:
+      contents: read
+    outputs:
+      release-version: ${{ steps.resolve-release-version.outputs.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - run: npm ci
+      - name: Resolve semantic release version
+        id: resolve-release-version
+        run: |
+          set -euo pipefail
+          release_version="$(node scripts/resolve-release-version.mjs)"
+          if [[ -n "$release_version" ]]; then
+            if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+              echo "Invalid semantic release version: $release_version" >&2
+              exit 1
+            fi
+            echo "Resolved final release version: $release_version"
+          else
+            echo "No semantic release will be published for this commit."
+          fi
+          echo "version=$release_version" >> "$GITHUB_OUTPUT"
+      - run: npm run build
+      - name: Package exact final release VSIX
+        env:
+          RELEASE_VERSION: ${{ steps.resolve-release-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$RELEASE_VERSION" ]]; then
+            node scripts/package-release.mjs "$RELEASE_VERSION"
+          else
+            npm run package:vsix
+          fi
+      - run: npm run package:verify
+      - name: Run installed VSIX integration in isolated hosts
+        id: run-isolated-host-tests
+        env:
+          GITO_VSCODE_VERSION: stable
+        run: |
+          set -euo pipefail
+          vsix_path="$(find dist -maxdepth 1 -type f -name 'gito-*.vsix' -print -quit)"
+          test -n "$vsix_path"
+          pre_host_vsix_sha256="$(sha256sum "$vsix_path" | awk '{print $1}')"
+          [[ "$pre_host_vsix_sha256" =~ ^[0-9a-f]{64}$ ]]
+          verify_vsix_digest() {
+            local checkpoint_name="$1"
+            local observed_vsix_sha256
+            observed_vsix_sha256="$(sha256sum "$vsix_path" | awk '{print $1}')"
+            if [[ "$observed_vsix_sha256" != "$pre_host_vsix_sha256" ]]; then
+              echo "VSIX digest changed ${checkpoint_name}: expected $pre_host_vsix_sha256, found $observed_vsix_sha256." >&2
+              exit 1
+            fi
+          }
+          echo "Captured pre-host VSIX SHA-256: $pre_host_vsix_sha256"
+          xvfb-run --auto-servernum npm run test:packaged-vsix -- "$vsix_path"
+          verify_vsix_digest "after packaged host"
+          xvfb-run --auto-servernum npm run test:installed-vsix -- "$vsix_path"
+          verify_vsix_digest "after installed host"
+          echo "vsix-sha256=$pre_host_vsix_sha256" >> "$GITHUB_OUTPUT"
+      - name: Reverify exact tested VSIX before upload
+        if: steps.resolve-release-version.outputs.version != ''
+        env:
+          EXPECTED_VSIX_SHA256: ${{ steps.run-isolated-host-tests.outputs.vsix-sha256 }}
+          RELEASE_VERSION: ${{ steps.resolve-release-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          release_package_name="gito-${RELEASE_VERSION}.vsix"
+          release_package_path="dist/${release_package_name}"
+          release_checksum_path="${release_package_path}.sha256"
+          test -f "$release_package_path"
+          test -f "$release_checksum_path"
+          actual_vsix_sha256="$(sha256sum "$release_package_path" | awk '{print $1}')"
+          [[ "$actual_vsix_sha256" == "$EXPECTED_VSIX_SHA256" ]]
+          (cd dist && sha256sum --check "${release_package_name}.sha256")
+          metadata_vsix_sha256="$(node -p "require('./dist/release-metadata.json').sha256")"
+          [[ "$metadata_vsix_sha256" == "$EXPECTED_VSIX_SHA256" ]]
+      - name: Upload installed-tested release assets
+        if: steps.resolve-release-version.outputs.version != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: installed-tested-release-assets
+          path: |
+            dist/gito-${{ steps.resolve-release-version.outputs.version }}.vsix
+            dist/gito-${{ steps.resolve-release-version.outputs.version }}.vsix.sha256
+            dist/release-metadata.json
+          retention-days: 90
+
+      - name: Upload installed-tested visual input
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: installed-tested-visual-input
+          path: |
+            dist/gito-*.vsix
+            dist/gito-*.vsix.sha256
+            dist/release-metadata.json
+          retention-days: 7
+
+  installed-vsix-visual:
+    name: Installed VSIX Visual Evidence (compare or candidate)
+    needs: installed-vsix
+    outputs:
+      visual-mode: ${{ steps.visual-mode.outputs.mode }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - run: npm ci
+      - name: Download exact installed-tested VSIX
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: installed-tested-visual-input
+          path: dist
+      - name: Verify exact VSIX digest and source binding
+        run: |
+          set -euo pipefail
+          mapfile -t vsix_files < <(find dist -maxdepth 1 -type f -name 'gito-*.vsix' -print)
+          test "${#vsix_files[@]}" -eq 1
+          vsix_path="${vsix_files[0]}"
+          package_version="$(node -p "require('./dist/release-metadata.json').version")"
+          checksum_path="${vsix_path}.sha256"
+          test -f "$checksum_path"
+          (cd dist && sha256sum --check "$(basename "$checksum_path")")
+          node scripts/validate-installed-tested-artifact.mjs \
+            "$vsix_path" \
+            "$checksum_path" \
+            dist/release-metadata.json \
+            "$package_version"
+      - name: Select visual evidence mode
+        id: visual-mode
+        run: |
+          set -euo pipefail
+          baseline_directory="test/visual/golden/repository-home"
+          baseline_count="$(find "$baseline_directory" -maxdepth 1 -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+          metadata_count="$(find "$baseline_directory" -maxdepth 1 -type f -name '*.json' ! -name 'approval-manifest.json' 2>/dev/null | wc -l | tr -d ' ')"
+          if [[ "$baseline_count" -eq 8 && "$metadata_count" -eq 8 && -f "$baseline_directory/approval-manifest.json" ]]; then
+            visual_mode="approved-compare"
+          else
+            visual_mode="candidate-capture"
+          fi
+          echo "mode=$visual_mode" >> "$GITHUB_OUTPUT"
+          echo "baseline-count=$baseline_count" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Installed VSIX visual lane"
+            echo "- Mode: `$visual_mode`"
+            echo "- Approved PNG baselines: `$baseline_count/8`"
+            echo "- Approved metadata sidecars: `$metadata_count/8`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Compare real renderer evidence in Linux Xvfb
+        if: steps.visual-mode.outputs.mode == 'approved-compare'
+        env:
+          GITO_VISUAL_OUTPUT_DIR: ${{ runner.temp }}/gito-visual-artifacts
+        run: |
+          set -euo pipefail
+          vsix_path="$(find dist -maxdepth 1 -type f -name 'gito-*.vsix' -print -quit)"
+          test -n "$vsix_path"
+          xvfb-run --auto-servernum --server-args='-screen 0 1440x900x24' npm run test:visual-vsix -- "$vsix_path"
+      - name: Capture real renderer candidates in Linux Xvfb
+        if: steps.visual-mode.outputs.mode == 'candidate-capture'
+        env:
+          GITO_VISUAL_CAPTURE_ONLY: "1"
+          GITO_VISUAL_OUTPUT_DIR: ${{ runner.temp }}/gito-visual-artifacts
+        run: |
+          set -euo pipefail
+          echo "::warning::Approved visual baselines are incomplete; this lane is candidate capture only and records baselineStatus=missing. Run the protected visual-baseline-capture workflow." >&2
+          vsix_path="$(find dist -maxdepth 1 -type f -name 'gito-*.vsix' -print -quit)"
+          test -n "$vsix_path"
+          xvfb-run --auto-servernum --server-args='-screen 0 1440x900x24' npm run test:visual-vsix -- "$vsix_path"
+      - name: Upload installed VSIX visual evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: warn
+          name: installed-vsix-visual-${{ github.sha }}
+          path: ${{ runner.temp }}/gito-visual-artifacts
+          retention-days: 30
+
+  macos:
+    name: macOS Extension Host
+    needs: static
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - run: npm ci
+      - run: npm run build
+      - env:
+          GITO_VSCODE_VERSION: stable
+        run: npm run test:integration
+
+  windows:
+    name: Windows Extension Host
+    needs: static
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - run: npm ci
+      - run: npm run build
+      - env:
+          GITO_VSCODE_VERSION: stable
+        run: npm run test:integration
+
+  tests-summary:
+    name: Tests
+    if: always()
+    needs:
+      - static
+      - security
+      - supported-vscode
+      - installed-vsix
+      - installed-vsix-visual
+      - macos
+      - windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require every test lane to pass
+        env:
+          TEST_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          if ! jq -e 'length > 0 and all(.[]; .result == "success")' <<<"$TEST_RESULTS" >/dev/null; then
+            echo "One or more test lanes did not succeed:" >&2
+            jq -r 'to_entries[] | "  \(.key): \(.value.result)"' <<<"$TEST_RESULTS" >&2
+            exit 1
+          fi
+          visual_mode='${{ needs.installed-vsix-visual.outputs.visual-mode }}'
+          echo "Installed VSIX visual lane mode: $visual_mode"
+          if [[ "$visual_mode" == "candidate-capture" ]]; then
+            echo "Visual lane captured runtime candidates only; approved baseline comparison remains pending."
+          fi
+
+  pull-request-title:
+    name: Conventional PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - run: npm ci
+      - name: Validate title
+        env:
+          PULL_REQUEST_TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/validate-pull-request-title.mjs
+
+  release-dry-run:
+    name: Semantic release dry run
+    if: github.event_name == 'pull_request'
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - run: npm ci
+      - name: Evaluate release without publishing
+        run: |
+          set -euo pipefail
+          git switch --force-create main
+          release_dry_run_repository="$RUNNER_TEMP/release-dry-run.git"
+          git init --bare --initial-branch=main "$release_dry_run_repository"
+          git push "$release_dry_run_repository" HEAD:main --tags
+          GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main npm run release -- --dry-run --no-ci --repository-url "file://$release_dry_run_repository" --plugins @semantic-release/commit-analyzer --plugins @semantic-release/release-notes-generator
+
+  release:
+    name: GitHub Release
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      needs.installed-vsix.outputs.release-version != ''
+    needs:
+      - static
+      - tests-summary
+      - installed-vsix
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release-production
+    permissions:
+      actions: read
+      contents: write
+    concurrency:
+      group: production-release
+      cancel-in-progress: false
+    outputs:
+      release-tag: ${{ steps.resolve-release.outputs.tag }}
+      release-asset-name: ${{ steps.resolve-release.outputs.asset-name }}
+      release-sha256: ${{ steps.resolve-release.outputs.sha256 }}
+      release-commit-sha: ${{ steps.resolve-release.outputs.commit-sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: installed-tested-release-assets
+          path: dist
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - run: npm ci
+      - name: Verify installed-tested source binding
+        env:
+          RELEASE_VERSION: ${{ needs.installed-vsix.outputs.release-version }}
+        run: |
+          set -euo pipefail
+          node scripts/validate-installed-tested-artifact.mjs \
+            "dist/gito-${RELEASE_VERSION}.vsix" \
+            "dist/gito-${RELEASE_VERSION}.vsix.sha256" \
+            dist/release-metadata.json \
+            "$RELEASE_VERSION"
+          node scripts/validate-package-contents.mjs \
+            "dist/gito-${RELEASE_VERSION}.vsix" \
+            "$RELEASE_VERSION"
+      - name: Require approved visual baselines for release
+        run: npm run test:visual-baselines
+      - name: Require immutable-release capability
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          immutable_release_status="$(gh api "repos/${GH_REPO}/immutable-releases")"
+          if ! jq -e '.enabled == true' <<<"$immutable_release_status" >/dev/null; then
+            echo "GitHub immutable releases are not enabled; refusing release write." >&2
+            exit 1
+          fi
+      - name: Bind local release commit
+        id: local-release-commit
+        run: echo "commit-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Require successful security workflow checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT_SHA: ${{ steps.local-release-commit.outputs.commit-sha }}
+        run: |
+          set -euo pipefail
+          security_workflows=(codeql.yml dependency-review.yml gitleaks.yml)
+          deadline=$((SECONDS + 600))
+          while (( SECONDS < deadline )); do
+            all_security_workflows_passed=true
+            for workflow_file in "${security_workflows[@]}"; do
+              workflow_runs="$(gh run list \
+                --repo "$GH_REPO" \
+                --workflow "$workflow_file" \
+                --commit "$RELEASE_COMMIT_SHA" \
+                --limit 20 \
+                --json databaseId,headSha,headBranch,event,status,conclusion,createdAt)"
+              latest_run_id="$(jq -r --arg commit_sha "$RELEASE_COMMIT_SHA" \
+                '[.[] | select(
+                  .headSha == $commit_sha and
+                  .headBranch == "main" and
+                  .event == "push" and
+                  .status == "completed"
+                )] | sort_by(.createdAt) | .[-1].databaseId // empty' \
+                <<<"$workflow_runs")"
+              if [[ -z "$latest_run_id" ]]; then
+                all_security_workflows_passed=false
+                continue
+              fi
+              run_readback="$(gh run view "$latest_run_id" --repo "$GH_REPO" --json databaseId,headSha,headBranch,event,status,conclusion)"
+              if ! jq -e --arg commit_sha "$RELEASE_COMMIT_SHA" --arg run_id "$latest_run_id" \
+                '(.databaseId | tostring) == $run_id and .headSha == $commit_sha and .headBranch == "main" and .event == "push" and .status == "completed" and .conclusion == "success"' \
+                <<<"$run_readback" >/dev/null; then
+                all_security_workflows_passed=false
+              fi
+            done
+            if [[ "$all_security_workflows_passed" == true ]]; then
+              echo "CodeQL, dependency review, and Gitleaks passed for $RELEASE_COMMIT_SHA."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Timed out waiting for successful security workflows on $RELEASE_COMMIT_SHA." >&2
+          exit 1
+      - name: Recompute and bind release version before write
+        env:
+          EXPECTED_RELEASE_VERSION: ${{ needs.installed-vsix.outputs.release-version }}
+        run: |
+          set -euo pipefail
+          metadata_release_version="$(jq -er '.version' dist/release-metadata.json)"
+          resolved_release_version="$(node scripts/resolve-release-version.mjs)"
+          [[ "$metadata_release_version" == "$EXPECTED_RELEASE_VERSION" ]]
+          [[ "$resolved_release_version" == "$EXPECTED_RELEASE_VERSION" ]]
+      - name: Create semantic GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITO_RELEASE_PACKAGE_PATH: dist/gito-${{ needs.installed-vsix.outputs.release-version }}.vsix
+        run: npm run release
+      - name: Verify released assets and expose exact metadata
+        id: resolve-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          LOCAL_COMMIT_SHA: ${{ steps.local-release-commit.outputs.commit-sha }}
+        run: |
+          set -euo pipefail
+          release_metadata_path="dist/release-metadata.json"
+          if [[ ! -f "$release_metadata_path" ]]; then
+            echo "No semantic-release version was prepared."
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "asset-name=" >> "$GITHUB_OUTPUT"
+            echo "sha256=" >> "$GITHUB_OUTPUT"
+            echo "commit-sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          release_tag="$(jq -er '.tag' "$release_metadata_path")"
+          release_asset_name="$(jq -er '.assetName' "$release_metadata_path")"
+          release_checksum_name="$(jq -er '.checksumAssetName' "$release_metadata_path")"
+          release_sha256="$(jq -er '.sha256' "$release_metadata_path")"
+          release_commit_sha="$(jq -er '.commitSha' "$release_metadata_path")"
+          [[ "$release_commit_sha" == "$LOCAL_COMMIT_SHA" ]]
+
+          resolve_remote_tag_commit_sha() {
+            local remote_tag_ref remote_tag_type remote_tag_object_sha
+            remote_tag_ref="$(gh api "repos/${GH_REPO}/git/ref/tags/${release_tag}")"
+            remote_tag_type="$(jq -r '.object.type' <<<"$remote_tag_ref")"
+            remote_tag_object_sha="$(jq -r '.object.sha' <<<"$remote_tag_ref")"
+            if [[ "$remote_tag_type" == "tag" ]]; then
+              gh api "repos/${GH_REPO}/git/tags/${remote_tag_object_sha}" --jq '.object.sha'
+            elif [[ "$remote_tag_type" == "commit" ]]; then
+              printf '%s\n' "$remote_tag_object_sha"
+            else
+              echo "Unsupported remote tag object type: $remote_tag_type" >&2
+              return 1
+            fi
+          }
+
+          remote_tag_commit_sha="$(resolve_remote_tag_commit_sha)"
+          [[ "$remote_tag_commit_sha" == "$LOCAL_COMMIT_SHA" ]]
+          release_asset_directory="$RUNNER_TEMP/release-readback"
+          mkdir -p "$release_asset_directory"
+
+          release_view="$(gh release view "$release_tag" --json tagName,isDraft,isImmutable,assets)"
+          [[ "$(jq -r '.tagName' <<<"$release_view")" == "$release_tag" ]]
+          [[ "$(jq -r '.isDraft' <<<"$release_view")" == "false" ]]
+          [[ "$(jq -r '.isImmutable' <<<"$release_view")" == "true" ]]
+          [[ "$(jq '.assets | length' <<<"$release_view")" == "3" ]]
+          release_asset_names="$(jq -r '.assets[].name' <<<"$release_view")"
+          expected_asset_names="$(printf '%s\n' "$release_asset_name" "$release_checksum_name" "release-metadata.json" | sort)"
+          actual_asset_names="$(printf '%s\n' "$release_asset_names" | sort)"
+          [[ "$actual_asset_names" == "$expected_asset_names" ]]
+          gh release download "$release_tag" --dir "$release_asset_directory" \
+            --pattern "$release_asset_name" --pattern "$release_checksum_name" \
+            --pattern "release-metadata.json"
+          release_package_path="$release_asset_directory/$release_asset_name"
+          release_checksum_path="$release_asset_directory/$release_checksum_name"
+          test -f "$release_package_path"
+          test -f "$release_checksum_path"
+          cmp --silent "$release_metadata_path" "$release_asset_directory/release-metadata.json"
+          (cd "$release_asset_directory" && sha256sum --check "$release_checksum_name")
+          release_downloaded_sha256="$(sha256sum "$release_package_path" | awk '{print $1}')"
+          [[ "$release_downloaded_sha256" == "$release_sha256" ]]
+          [[ "$(<"$release_checksum_path")" == "$release_sha256  $release_asset_name" ]]
+          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "asset-name=$release_asset_name" >> "$GITHUB_OUTPUT"
+          echo "sha256=$release_sha256" >> "$GITHUB_OUTPUT"
+          echo "commit-sha=$release_commit_sha" >> "$GITHUB_OUTPUT"
+
+  marketplace:
+    name: Visual Studio Marketplace
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      needs.release.outputs.release-tag != ''
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: marketplace-production
+    permissions:
+      contents: read
+    concurrency:
+      group: marketplace-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - run: npm ci
+      - name: Download exact GitHub Release assets
+        id: release-download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release.outputs.release-tag }}
+          RELEASE_ASSET_NAME: ${{ needs.release.outputs.release-asset-name }}
+          RELEASE_COMMIT_SHA: ${{ needs.release.outputs.release-commit-sha }}
+        run: |
+          set -euo pipefail
+          release_package_name="$RELEASE_ASSET_NAME"
+          release_checksum_name="${release_package_name}.sha256"
+          release_version="${release_package_name#gito-}"
+          release_version="${release_version%.vsix}"
+          release_asset_directory="$RUNNER_TEMP/marketplace-release"
+          mkdir -p "$release_asset_directory"
+          release_view="$(gh release view "$RELEASE_TAG" --json tagName,isDraft,isImmutable,assets)"
+          [[ "$(jq -r '.tagName' <<<"$release_view")" == "$RELEASE_TAG" ]]
+          [[ "$(jq -r '.isDraft' <<<"$release_view")" == "false" ]]
+          [[ "$(jq -r '.isImmutable' <<<"$release_view")" == "true" ]]
+          [[ "$(jq '.assets | length' <<<"$release_view")" == "3" ]]
+          actual_asset_names="$(jq -r '.assets[].name' <<<"$release_view" | sort)"
+          expected_asset_names="$(printf '%s\n' "$release_package_name" "$release_checksum_name" "release-metadata.json" | sort)"
+          [[ "$actual_asset_names" == "$expected_asset_names" ]]
+          remote_tag_commit_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq '.sha')"
+          [[ "$remote_tag_commit_sha" == "$RELEASE_COMMIT_SHA" ]]
+          gh release download "$RELEASE_TAG" --dir "$release_asset_directory" \
+            --pattern "$release_package_name" --pattern "$release_checksum_name" \
+            --pattern "release-metadata.json"
+          echo "directory=${release_asset_directory}" >> "$GITHUB_OUTPUT"
+          echo "version=${release_version}" >> "$GITHUB_OUTPUT"
+      - name: Validate exact Marketplace package provenance
+        id: release-package
+        env:
+          RELEASE_ASSET_NAME: ${{ needs.release.outputs.release-asset-name }}
+          RELEASE_COMMIT_SHA: ${{ needs.release.outputs.release-commit-sha }}
+          RELEASE_DIRECTORY: ${{ steps.release-download.outputs.directory }}
+          RELEASE_SHA256: ${{ needs.release.outputs.release-sha256 }}
+          RELEASE_VERSION: ${{ steps.release-download.outputs.version }}
+        run: |
+          set -euo pipefail
+          release_package_name="$RELEASE_ASSET_NAME"
+          release_checksum_name="${release_package_name}.sha256"
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_COMMIT_SHA" ]]
+          node scripts/validate-installed-tested-artifact.mjs \
+            "$RELEASE_DIRECTORY/$release_package_name" \
+            "$RELEASE_DIRECTORY/$release_checksum_name" \
+            "$RELEASE_DIRECTORY/release-metadata.json" \
+            "$RELEASE_VERSION"
+          (cd "$RELEASE_DIRECTORY" && sha256sum --check "$release_checksum_name")
+          release_downloaded_sha256="$(sha256sum "$RELEASE_DIRECTORY/$release_package_name" | awk '{print $1}')"
+          [[ "$release_downloaded_sha256" == "$RELEASE_SHA256" ]]
+          [[ "$(<"$RELEASE_DIRECTORY/$release_checksum_name")" == "$RELEASE_SHA256  $release_package_name" ]]
+          node scripts/validate-package-contents.mjs "$RELEASE_DIRECTORY/$release_package_name" "$RELEASE_VERSION"
+          echo "path=${RELEASE_DIRECTORY}/${release_package_name}" >> "$GITHUB_OUTPUT"
+      - name: Publish exact tested release package
+        env:
+          RELEASE_PACKAGE_PATH: ${{ steps.release-package.outputs.path }}
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --no-install vsce publish --packagePath "$RELEASE_PACKAGE_PATH" --skip-duplicate

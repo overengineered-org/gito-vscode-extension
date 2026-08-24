@@ -1,0 +1,371 @@
+name: GitHub Release recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag, for example v1.2.3
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Recover exact release assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require recovery dispatch from main
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$WORKFLOW_REF" != "refs/heads/main" ]]; then
+            echo "Release recovery must be dispatched from refs/heads/main; received $WORKFLOW_REF." >&2
+            exit 1
+          fi
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.tag }}
+      - name: Verify exact tag and successful CI evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          local_commit_sha="$(git rev-parse HEAD)"
+          local_tag_commit_sha="$(git rev-list -n 1 "$RELEASE_TAG")"
+          [[ "$local_commit_sha" == "$local_tag_commit_sha" ]]
+
+          remote_tag_ref="$(gh api "repos/${GH_REPO}/git/ref/tags/${RELEASE_TAG}")"
+          remote_tag_type="$(jq -r '.object.type' <<<"$remote_tag_ref")"
+          remote_tag_object_sha="$(jq -r '.object.sha' <<<"$remote_tag_ref")"
+          if [[ "$remote_tag_type" == "tag" ]]; then
+            remote_tag_commit_sha="$(gh api "repos/${GH_REPO}/git/tags/${remote_tag_object_sha}" --jq '.object.sha')"
+          elif [[ "$remote_tag_type" == "commit" ]]; then
+            remote_tag_commit_sha="$remote_tag_object_sha"
+          else
+            echo "Unsupported remote tag object type: $remote_tag_type" >&2
+            exit 1
+          fi
+          [[ "$remote_tag_commit_sha" == "$local_commit_sha" ]]
+
+          ci_runs="$(gh run list --workflow ci.yml --commit "$local_commit_sha" --limit 100 --json databaseId,headSha,headBranch,status,conclusion,event,createdAt)"
+          latest_ci_run_id="$(jq -r --arg expected_sha "$local_commit_sha" '
+            [.[] | select(
+              .headSha == $expected_sha and
+              .headBranch == "main" and
+              .status == "completed" and
+              .event == "push"
+            )] | sort_by(.createdAt) | .[-1].databaseId // empty
+          ' <<<"$ci_runs")"
+          if [[ -z "$latest_ci_run_id" ]]; then
+            echo "No completed main push CI run for exact tag commit $local_commit_sha." >&2
+            exit 1
+          fi
+          ci_run_readback="$(gh run view "$latest_ci_run_id" --repo "$GH_REPO" --json databaseId,headSha,headBranch,event,status,conclusion)"
+          if ! jq -e --arg expected_sha "$local_commit_sha" --arg expected_run_id "$latest_ci_run_id" '
+            (.databaseId | tostring) == $expected_run_id and
+            .headSha == $expected_sha and
+            .headBranch == "main" and
+            .event == "push" and
+            .status == "completed" and
+            .conclusion == "success"
+          ' <<<"$ci_run_readback" >/dev/null; then
+            echo "Latest completed CI run $latest_ci_run_id did not succeed for exact main push commit $local_commit_sha." >&2
+            exit 1
+          fi
+          security_workflows=(codeql.yml dependency-review.yml gitleaks.yml)
+          for workflow_file in "${security_workflows[@]}"; do
+            security_runs="$(gh run list \
+              --workflow "$workflow_file" \
+              --commit "$local_commit_sha" \
+              --limit 100 \
+              --json databaseId,headSha,headBranch,event,status,conclusion,createdAt)"
+            latest_security_run_id="$(jq -r --arg expected_sha "$local_commit_sha" '
+              [.[] | select(
+                .headSha == $expected_sha and
+                .headBranch == "main" and
+                .event == "push" and
+                .status == "completed"
+              )] | sort_by(.createdAt) | .[-1].databaseId // empty
+            ' <<<"$security_runs")"
+            if [[ -z "$latest_security_run_id" ]]; then
+              echo "No completed main push run for $workflow_file at exact tag commit $local_commit_sha." >&2
+              exit 1
+            fi
+            security_run_readback="$(gh run view "$latest_security_run_id" --repo "$GH_REPO" --json databaseId,headSha,headBranch,event,status,conclusion)"
+            if ! jq -e --arg expected_sha "$local_commit_sha" --arg expected_run_id "$latest_security_run_id" '
+              (.databaseId | tostring) == $expected_run_id and
+              .headSha == $expected_sha and
+              .headBranch == "main" and
+              .event == "push" and
+              .status == "completed" and
+              .conclusion == "success"
+            ' <<<"$security_run_readback" >/dev/null; then
+              echo "Latest completed $workflow_file run $latest_security_run_id did not succeed for exact main push commit $local_commit_sha." >&2
+              exit 1
+            fi
+          done
+          printf 'RELEASE_COMMIT_SHA=%s\nSUCCESSFUL_CI_RUN_ID=%s\n' \
+            "$local_commit_sha" "$latest_ci_run_id" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24
+      - run: npm ci
+      - name: Download exact installed-tested VSIX artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          release_version="${RELEASE_TAG#v}"
+          release_package_name="gito-${release_version}.vsix"
+          release_checksum_name="${release_package_name}.sha256"
+          installed_tested_directory="$RUNNER_TEMP/installed-tested-release-assets"
+          mkdir -p "$installed_tested_directory"
+          gh run download "$SUCCESSFUL_CI_RUN_ID" \
+            --name installed-tested-release-assets \
+            --dir "$installed_tested_directory"
+          test -f "$installed_tested_directory/$release_package_name"
+          test -f "$installed_tested_directory/$release_checksum_name"
+          test -f "$installed_tested_directory/release-metadata.json"
+          (
+            cd "$installed_tested_directory"
+            sha256sum --check "$release_checksum_name"
+          )
+          installed_tested_package_sha256="$(sha256sum "$installed_tested_directory/$release_package_name" | awk '{print $1}')"
+          installed_tested_metadata_sha256="$(node -p "require('$installed_tested_directory/release-metadata.json').sha256")"
+          [[ "$installed_tested_package_sha256" == "$installed_tested_metadata_sha256" ]]
+          printf 'INSTALLED_TESTED_PACKAGE_PATH=%s\n' \
+            "$installed_tested_directory/$release_package_name" >> "$GITHUB_ENV"
+          printf 'INSTALLED_TESTED_CHECKSUM_PATH=%s\n' \
+            "$installed_tested_directory/$release_checksum_name" >> "$GITHUB_ENV"
+          printf 'INSTALLED_TESTED_METADATA_PATH=%s\n' \
+            "$installed_tested_directory/release-metadata.json" >> "$GITHUB_ENV"
+      - name: Run full release gates
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          release_version="${RELEASE_TAG#v}"
+          npm run verify:static
+          npm run test:release-policy
+          npm run build
+          npm run check:bundle
+          node scripts/validate-installed-tested-artifact.mjs \
+            "$INSTALLED_TESTED_PACKAGE_PATH" \
+            "$INSTALLED_TESTED_CHECKSUM_PATH" \
+            "$INSTALLED_TESTED_METADATA_PATH" \
+            "$release_version"
+          GITO_RELEASE_METADATA_PATH="$INSTALLED_TESTED_METADATA_PATH" \
+            GITO_RELEASE_PACKAGE_PATH="$INSTALLED_TESTED_PACKAGE_PATH" \
+            node scripts/prepare-release.mjs "$release_version"
+          npm run package:verify -- "dist/gito-${release_version}.vsix" "$release_version"
+          npm run test:production-audit
+          npm run audit:production
+          npm run security:scan
+          release_metadata_path="dist/release-metadata.json"
+          [[ -f "$release_metadata_path" ]]
+          [[ "$(node -p "require('./${release_metadata_path}').tag")" == "$RELEASE_TAG" ]]
+          [[ "$(node -p "require('./${release_metadata_path}').commitSha")" == "$RELEASE_COMMIT_SHA" ]]
+      - name: Reverify exact recovered VSIX before upload
+        id: recovered-assets
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          release_version="${RELEASE_TAG#v}"
+          release_package_name="gito-${release_version}.vsix"
+          release_package_path="dist/${release_package_name}"
+          release_checksum_name="${release_package_name}.sha256"
+          release_metadata_path="dist/release-metadata.json"
+          test -f "$release_package_path"
+          test -f "dist/$release_checksum_name"
+          test -f "$release_metadata_path"
+          (cd dist && sha256sum --check "$release_checksum_name")
+          recovered_vsix_sha256="$(sha256sum "$release_package_path" | awk '{print $1}')"
+          metadata_vsix_sha256="$(node -p "require('./${release_metadata_path}').sha256")"
+          [[ "$recovered_vsix_sha256" == "$metadata_vsix_sha256" ]]
+          echo "package-name=$release_package_name" >> "$GITHUB_OUTPUT"
+          echo "checksum-name=$release_checksum_name" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: recovered-release-assets
+          path: |
+            dist/${{ steps.recovered-assets.outputs.package-name }}
+            dist/${{ steps.recovered-assets.outputs.checksum-name }}
+            dist/release-metadata.json
+          retention-days: 90
+
+  publish:
+    name: Recover GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release-production
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Require recovery dispatch from main
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$WORKFLOW_REF" != "refs/heads/main" ]]; then
+            echo "Release recovery must be dispatched from refs/heads/main; received $WORKFLOW_REF." >&2
+            exit 1
+          fi
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: recovered-release-assets
+          path: dist
+      - name: Require immutable-release capability
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          immutable_release_status="$(gh api "repos/${GH_REPO}/immutable-releases")"
+          if ! jq -e '.enabled == true' <<<"$immutable_release_status" >/dev/null; then
+            echo "GitHub immutable releases are not enabled; refusing release write." >&2
+            exit 1
+          fi
+      - name: Create, publish, or verify immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          release_version="${RELEASE_TAG#v}"
+          release_metadata_path="dist/release-metadata.json"
+          release_package_name="gito-${release_version}.vsix"
+          release_checksum_name="${release_package_name}.sha256"
+          release_package_path="dist/${release_package_name}"
+          release_checksum_path="dist/${release_checksum_name}"
+          [[ -f "$release_metadata_path" && -f "$release_package_path" && -f "$release_checksum_path" ]]
+          [[ "$(jq -er '.tag' "$release_metadata_path")" == "$RELEASE_TAG" ]]
+          [[ "$(jq -er '.assetName' "$release_metadata_path")" == "$release_package_name" ]]
+          [[ "$(jq -er '.checksumAssetName' "$release_metadata_path")" == "$release_checksum_name" ]]
+          release_metadata_sha256="$(jq -er '.sha256' "$release_metadata_path")"
+          [[ "$release_metadata_sha256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$(sha256sum "$release_package_path" | awk '{print $1}')" == "$release_metadata_sha256" ]]
+          release_commit_sha="$(jq -er '.commitSha' "$release_metadata_path")"
+          [[ "$(jq -er '.version' "$release_metadata_path")" == "$release_version" ]]
+
+          resolve_remote_tag_commit_sha() {
+            local remote_tag_ref remote_tag_type remote_tag_object_sha
+            remote_tag_ref="$(gh api "repos/${GH_REPO}/git/ref/tags/${RELEASE_TAG}")"
+            remote_tag_type="$(jq -r '.object.type' <<<"$remote_tag_ref")"
+            remote_tag_object_sha="$(jq -r '.object.sha' <<<"$remote_tag_ref")"
+            if [[ "$remote_tag_type" == "tag" ]]; then
+              gh api "repos/${GH_REPO}/git/tags/${remote_tag_object_sha}" --jq '.object.sha'
+            elif [[ "$remote_tag_type" == "commit" ]]; then
+              printf '%s\n' "$remote_tag_object_sha"
+            else
+              echo "Unsupported remote tag object type: $remote_tag_type" >&2
+              return 1
+            fi
+          }
+
+          verify_release_asset_names() {
+            local release_view actual_asset_names expected_asset_names
+            release_view="$(gh release view "$RELEASE_TAG" --json tagName,isDraft,isImmutable,assets)"
+            [[ "$(jq -r '.tagName' <<<"$release_view")" == "$RELEASE_TAG" ]]
+            [[ "$(jq '.assets | length' <<<"$release_view")" == "3" ]]
+            actual_asset_names="$(jq -r '.assets[].name' <<<"$release_view" | sort)"
+            expected_asset_names="$(printf '%s\n' "$release_package_name" "$release_checksum_name" "release-metadata.json" | sort)"
+            [[ "$actual_asset_names" == "$expected_asset_names" ]]
+          }
+
+          verify_immutable_release() {
+            local release_view release_asset_directory downloaded_package_path downloaded_checksum_path downloaded_package_sha256
+            release_view="$(gh release view "$RELEASE_TAG" --json tagName,isDraft,isImmutable,assets)"
+            [[ "$(jq -r '.tagName' <<<"$release_view")" == "$RELEASE_TAG" ]]
+            [[ "$(jq -r '.isDraft' <<<"$release_view")" == "false" ]]
+            [[ "$(jq -r '.isImmutable' <<<"$release_view")" == "true" ]]
+            verify_release_asset_names
+            [[ "$(resolve_remote_tag_commit_sha)" == "$release_commit_sha" ]]
+            release_asset_directory="$(mktemp -d)"
+            gh release download "$RELEASE_TAG" --dir "$release_asset_directory" \
+              --pattern "$release_package_name" --pattern "$release_checksum_name" \
+              --pattern "release-metadata.json"
+            downloaded_package_path="$release_asset_directory/$release_package_name"
+            downloaded_checksum_path="$release_asset_directory/$release_checksum_name"
+            test -f "$downloaded_package_path" && test -f "$downloaded_checksum_path"
+            (cd "$release_asset_directory" && sha256sum --check "$release_checksum_name")
+            downloaded_package_sha256="$(sha256sum "$downloaded_package_path" | awk '{print $1}')"
+            [[ "$downloaded_package_sha256" == "$release_metadata_sha256" ]]
+            [[ "$(<"$downloaded_checksum_path")" == "$(sha256sum "$downloaded_package_path" | awk '{print $1}')  $release_package_name" ]]
+            cmp --silent "$release_metadata_path" "$release_asset_directory/release-metadata.json"
+            embedded_manifest="$(unzip -p "$downloaded_package_path" extension/package.json)"
+            [[ "$(jq -er '.name' <<<"$embedded_manifest")" == "gito" ]]
+            [[ "$(jq -er '.publisher' <<<"$embedded_manifest")" == "overengineered-org" ]]
+            [[ "$(jq -er '.version' <<<"$embedded_manifest")" == "$release_version" ]]
+          }
+
+          release_api_response="$RUNNER_TEMP/release-api-response"
+          release_lookup_error="$RUNNER_TEMP/release-lookup-error"
+          if gh api --include "repos/${GH_REPO}/releases/tags/${RELEASE_TAG}" >"$release_api_response" 2>"$release_lookup_error"; then
+            release_exists=true
+          elif grep -Eq '^HTTP/[0-9.]+ 404 ' "$release_api_response"; then
+            release_exists=false
+          else
+            cat "$release_lookup_error" >&2
+            exit 1
+          fi
+
+          [[ "$(resolve_remote_tag_commit_sha)" == "$release_commit_sha" ]]
+          (cd dist && sha256sum --check "$release_checksum_name")
+          embedded_manifest="$(unzip -p "$release_package_path" extension/package.json)"
+          [[ "$(jq -er '.name' <<<"$embedded_manifest")" == "gito" ]]
+          [[ "$(jq -er '.publisher' <<<"$embedded_manifest")" == "overengineered-org" ]]
+          [[ "$(jq -er '.version' <<<"$embedded_manifest")" == "$release_version" ]]
+
+          if [[ "$release_exists" == false ]]; then
+            gh release create "$RELEASE_TAG" "dist/$release_package_name" "dist/$release_checksum_name" "$release_metadata_path" \
+              --generate-notes --title "$RELEASE_TAG" --verify-tag
+            verify_immutable_release
+            exit 0
+          fi
+
+          release_is_draft="$(gh api "repos/${GH_REPO}/releases/tags/${RELEASE_TAG}" --jq '.draft')"
+          if [[ "$release_is_draft" == true ]]; then
+            [[ "$(resolve_remote_tag_commit_sha)" == "$release_commit_sha" ]]
+            gh release upload "$RELEASE_TAG" "dist/$release_package_name" "dist/$release_checksum_name" "$release_metadata_path" --clobber
+            verify_release_asset_names
+            gh release edit "$RELEASE_TAG" --draft=false
+            verify_immutable_release
+            exit 0
+          fi
+
+          if [[ "$release_is_draft" != false ]]; then
+            echo "Could not determine whether release $RELEASE_TAG is immutable." >&2
+            exit 1
+          fi
+          verify_immutable_release

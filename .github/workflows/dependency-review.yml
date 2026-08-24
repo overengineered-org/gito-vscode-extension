@@ -1,0 +1,21 @@
+name: Dependency review
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/dependency-review-action@1e966ba708e4b64bb0c9bfb7abb5a232840be16a # main
+        with:
+          fail-on-severity: high
+          base-ref: ${{ github.event_name == 'push' && github.event.before || github.event.pull_request.base.sha }}
+          head-ref: ${{ github.sha }}

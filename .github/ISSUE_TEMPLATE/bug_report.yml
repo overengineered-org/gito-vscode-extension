@@ -1,0 +1,65 @@
+name: Product defect
+description: Report a reproducible Git'o behavior problem.
+title: "fix: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: List the smallest steps that show the problem.
+      placeholder: "1. Open ...\n2. Select ...\n3. Observe ..."
+    validations:
+      required: true
+  - type: input
+    id: gito-version
+    attributes:
+      label: Git'o version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: vscode-version
+    attributes:
+      label: VS Code version
+      placeholder: "1.132.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+    validations:
+      required: true
+  - type: dropdown
+    id: execution-context
+    attributes:
+      label: Execution context
+      options:
+        - Desktop
+        - Remote Extension Host
+        - vscode.dev (unsupported)
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - Local Git only
+        - GitHub.com
+        - Azure DevOps Services
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Add redacted logs or screenshots. Never include tokens, headers, or private repository content.
+    validations:
+      required: true
