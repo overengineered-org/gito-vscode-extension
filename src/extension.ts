@@ -3,20 +3,28 @@ import * as vscode from "vscode";
 import { ChangesSidebar, type ChangesSidebarNode } from "./changesSidebar.ts";
 import { CommitView } from "./commitView.ts";
 import { loadBuiltInGitApi } from "./gitApi.ts";
-import { GitSidebar } from "./gitSidebar.ts";
+import { GitSidebar, type GitSidebarNode } from "./gitSidebar.ts";
 import { GraphView } from "./graphView.ts";
 import { WorkspaceRepositories } from "./workspaceRepositories.ts";
+import { Worktrees } from "./worktrees.ts";
 
 export async function activate(extensionContext: vscode.ExtensionContext): Promise<void> {
   const builtInGitApi = await loadBuiltInGitApi();
   const diagnostics = vscode.window.createOutputChannel("Git'o", { log: true });
   const workspaceRepositories = new WorkspaceRepositories(builtInGitApi);
-  const gitSidebar = new GitSidebar(builtInGitApi, workspaceRepositories, diagnostics);
+  const worktrees = new Worktrees(extensionContext.globalState, diagnostics);
+  const gitSidebar = new GitSidebar(
+    builtInGitApi,
+    workspaceRepositories,
+    worktrees,
+    diagnostics,
+  );
   const commitView = new CommitView(workspaceRepositories, diagnostics);
   const changesSidebar = new ChangesSidebar(workspaceRepositories);
   const graphView = new GraphView(workspaceRepositories, diagnostics);
   extensionContext.subscriptions.push(
     workspaceRepositories,
+    worktrees,
     diagnostics,
     gitSidebar,
     commitView,
@@ -48,6 +56,34 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
     vscode.commands.registerCommand("gito.toggleCommitDiffLayout", () =>
       vscode.commands.executeCommand("toggle.diff.renderSideBySide"),
     ),
+    vscode.commands.registerCommand("gito.createWorktree", (repositoryRootUri?: vscode.Uri) => {
+      const repository =
+        repositoryRootUri === undefined
+          ? undefined
+          : workspaceRepositories.findRepository(repositoryRootUri.fsPath);
+      return repository === undefined
+        ? undefined
+        : worktrees.promptToCreateFeatureWorktree(repository);
+    }),
+    vscode.commands.registerCommand(
+      "gito.openWorktreeInCurrentWindow",
+      (worktreeNodeOrPath?: GitSidebarNode | string) => {
+        const worktreePath = resolveWorktreePath(worktreeNodeOrPath);
+        return worktreePath === undefined ? undefined : worktrees.openWorktree(worktreePath, false);
+      },
+    ),
+    vscode.commands.registerCommand(
+      "gito.openWorktreeInNewWindow",
+      (worktreeNodeOrPath?: GitSidebarNode | string) => {
+        const worktreePath = resolveWorktreePath(worktreeNodeOrPath);
+        return worktreePath === undefined ? undefined : worktrees.openWorktree(worktreePath, true);
+      },
+    ),
+    vscode.commands.registerCommand("gito.renameWorktree", (sidebarNode?: GitSidebarNode) =>
+      sidebarNode?.nodeType === "worktree"
+        ? worktrees.promptToRenameWorktree(sidebarNode.worktree)
+        : undefined,
+    ),
     vscode.commands.registerCommand("gito.pruneLocalBranches", (repositoryRootUri?: vscode.Uri) =>
       repositoryRootUri === undefined
         ? undefined
@@ -68,4 +104,13 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
           : gitSidebar.switchReference(repositoryRootUri, referenceType),
     ),
   );
+}
+
+function resolveWorktreePath(sidebarNodeOrPath: GitSidebarNode | string | undefined): string | undefined {
+  if (typeof sidebarNodeOrPath === "string") {
+    return sidebarNodeOrPath;
+  }
+  return sidebarNodeOrPath?.nodeType === "worktree"
+    ? sidebarNodeOrPath.worktree.path
+    : undefined;
 }

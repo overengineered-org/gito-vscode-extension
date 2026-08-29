@@ -30,7 +30,16 @@ export interface GitRepositoryState {
   readonly onDidChange: vscode.Event<void>;
   readonly remotes: readonly GitRemote[];
   readonly untrackedChanges: readonly GitChange[];
+  readonly worktrees: readonly GitWorktree[];
   readonly workingTreeChanges: readonly GitChange[];
+}
+
+export interface GitWorktree {
+  readonly detached: boolean;
+  readonly main: boolean;
+  readonly name: string;
+  readonly path: string;
+  readonly ref: string;
 }
 
 export interface GitRemote {
@@ -47,6 +56,15 @@ export interface GitRepository {
   };
   add(resourceUris: readonly vscode.Uri[]): Promise<void>;
   clean(resourceUris: readonly vscode.Uri[]): Promise<void>;
+  createWorktree(options: {
+    readonly branch: string;
+    readonly commitish: string;
+    readonly path: string;
+  }): Promise<string>;
+  deleteWorktree(
+    worktreePath: string,
+    options?: { readonly force?: boolean; readonly label?: string },
+  ): Promise<void>;
   getBranchBase(branchName: string): Promise<GitReference | undefined>;
   getRefs(query: GitReferenceQuery): Promise<readonly GitReference[]>;
   log(options?: GitLogOptions): Promise<readonly GitCommit[]>;

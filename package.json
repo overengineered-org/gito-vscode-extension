@@ -1,7 +1,7 @@
 {
   "name": "gito",
   "displayName": "Git'o",
-  "description": "Work with local Git repositories, branches, and tags from a focused sidebar.",
+  "description": "Work with repositories, worktrees, branches, tags, and commits from a focused Git sidebar.",
   "version": "0.8.10",
   "publisher": "overengineered-org",
   "license": "MIT",
@@ -100,6 +100,26 @@
         "command": "gito.toggleCommitDiffLayout",
         "title": "Git'o: Toggle Unified / Side-by-Side Diff",
         "icon": "$(layout)"
+      },
+      {
+        "command": "gito.createWorktree",
+        "title": "Git'o: Create Feature Worktree",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gito.openWorktreeInCurrentWindow",
+        "title": "Open Worktree in Current Window",
+        "icon": "$(window)"
+      },
+      {
+        "command": "gito.openWorktreeInNewWindow",
+        "title": "Open Worktree in New Window",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "gito.renameWorktree",
+        "title": "Rename Worktree Label",
+        "icon": "$(edit)"
       }
     ],
     "menus": {
@@ -126,6 +146,22 @@
         },
         {
           "command": "gito.toggleCommitDiffLayout",
+          "when": "false"
+        },
+        {
+          "command": "gito.createWorktree",
+          "when": "false"
+        },
+        {
+          "command": "gito.openWorktreeInCurrentWindow",
+          "when": "false"
+        },
+        {
+          "command": "gito.openWorktreeInNewWindow",
+          "when": "false"
+        },
+        {
+          "command": "gito.renameWorktree",
           "when": "false"
         }
       ],
@@ -161,8 +197,37 @@
           "command": "gito.unstageGroup",
           "when": "view == gito.changes && viewItem == gito.group.staged",
           "group": "inline"
+        },
+        {
+          "command": "gito.openWorktreeInNewWindow",
+          "when": "view == gito.git && viewItem == gito.worktree.available",
+          "group": "inline"
+        },
+        {
+          "command": "gito.openWorktreeInCurrentWindow",
+          "when": "view == gito.git && viewItem == gito.worktree.available",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gito.renameWorktree",
+          "when": "view == gito.git && (viewItem == gito.worktree.current || viewItem == gito.worktree.available)",
+          "group": "navigation@2"
         }
       ]
+    },
+    "configuration": {
+      "title": "Git'o",
+      "properties": {
+        "gito.worktrees.storageRoot": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Absolute folder for linked worktrees. `~` is supported. Empty stores them beside the primary repository under `.gito-worktrees/<repository>/`."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "git.detectWorktrees": true
     },
     "viewsWelcome": [
       {

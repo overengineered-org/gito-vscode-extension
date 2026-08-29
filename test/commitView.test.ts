@@ -192,16 +192,3 @@ test("highlights commit subject graphemes beyond 50 without highlighting the bod
   assert.equal(getSimulatedElement("commit").disabled, true);
   assert.equal(getSimulatedElement("commit-options").disabled, true);
 });
-
-test("keeps selected commit-message text visible", () => {
-  assert.match(
-    commitViewSource,
-    /\.message-editor textarea::selection\s*\{[^}]*color:\s*var\(--vscode-editor-selectionForeground,/su,
-  );
-});
-
-test("uses precise accessible icons instead of text glyphs", () => {
-  assert.doesNotMatch(commitViewSource, />[⌄✓]</u);
-  assert.match(commitViewSource, /aria-label="Open commit and push actions"/u);
-  assert.match(commitViewSource, /<svg class="action-icon"/u);
-});

@@ -1,6 +1,6 @@
 # Git'o
 
-Smallest working product: a native VS Code sidebar for local Git repositories, branches, and tags.
+Native VS Code sidebar for local Git repositories, worktrees, branches, tags, changes, and history.
 
 Desktop VS Code only. Git'o runs beside the repository and requires VS Code's built-in Git extension.
 
@@ -9,6 +9,7 @@ Desktop VS Code only. Git'o runs beside the repository and requires VS Code's bu
 - Clone through VS Code's built-in `Git: Clone` flow.
 - Show only repositories belonging to the opened folder or multi-root workspace.
 - Create and switch branches from actions inside the native Branches tree.
+- Create feature worktrees through VS Code's Git API, list every linked worktree together, rename local display labels, and open a worktree in the current or a new window.
 - Distinguish current, local-only, remote-only, tracked, ahead, behind, and diverged branches with native icons, semantic colours, labels, and tooltips.
 - Prune selected local branches missing from every remote after a native fetch-prune and confirmation.
 - Warn when the current branch is behind its configured upstream or its VS Code-detected source branch.
@@ -31,6 +32,8 @@ Branch icons use native theme colours: green is current and synced, purple is ah
 Open this folder in desktop VS Code and press `F5`.
 
 Git'o delegates Git mutations, prompts, errors, and credentials to VS Code's bundled Git extension. It reads repository state and history through that extension, and stores no credentials.
+
+Linked worktrees default to `.gito-worktrees/<repository>/<worktree>` beside the primary checkout, never inside it. Set `gito.worktrees.storageRoot` to an absolute path or a `~` path to keep every repository's worktrees under one global folder. Git'o stores custom worktree labels locally in VS Code; labels do not rename branches or folders.
 
 ## Validate
 

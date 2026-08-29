@@ -10,6 +10,12 @@ interface ExtensionManifest {
   };
   readonly contributes: {
     readonly commands?: readonly { readonly command: string }[];
+    readonly configuration?: {
+      readonly properties: Readonly<
+        Record<string, { readonly default: unknown; readonly scope: string; readonly type: string }>
+      >;
+    };
+    readonly configurationDefaults?: Readonly<Record<string, unknown>>;
     readonly menus?: Readonly<
       Record<string, readonly { readonly command: string; readonly when?: string }[]>
     >;
@@ -57,6 +63,10 @@ test("ships one desktop path backed by VS Code Git", () => {
       "gito.stageGroup",
       "gito.unstageGroup",
       "gito.toggleCommitDiffLayout",
+      "gito.createWorktree",
+      "gito.openWorktreeInCurrentWindow",
+      "gito.openWorktreeInNewWindow",
+      "gito.renameWorktree",
     ],
   );
   assert.deepEqual(extensionManifest.contributes.menus?.["editor/title"], [
@@ -66,17 +76,60 @@ test("ships one desktop path backed by VS Code Git", () => {
       when: "activeEditor == multiDiffEditor",
     },
   ]);
+  assert.deepEqual(extensionManifest.contributes.menus?.["view/item/context"], [
+    {
+      command: "gito.stageChange",
+      group: "inline",
+      when: "view == gito.changes && (viewItem == gito.change.unstaged || viewItem == gito.change.conflicts)",
+    },
+    {
+      command: "gito.unstageChange",
+      group: "inline",
+      when: "view == gito.changes && viewItem == gito.change.staged",
+    },
+    {
+      command: "gito.discardChange",
+      group: "navigation",
+      when: "view == gito.changes && viewItem == gito.change.unstaged",
+    },
+    {
+      command: "gito.stageGroup",
+      group: "inline",
+      when: "view == gito.changes && (viewItem == gito.group.unstaged || viewItem == gito.group.conflicts)",
+    },
+    {
+      command: "gito.unstageGroup",
+      group: "inline",
+      when: "view == gito.changes && viewItem == gito.group.staged",
+    },
+    {
+      command: "gito.openWorktreeInNewWindow",
+      group: "inline",
+      when: "view == gito.git && viewItem == gito.worktree.available",
+    },
+    {
+      command: "gito.openWorktreeInCurrentWindow",
+      group: "navigation@1",
+      when: "view == gito.git && viewItem == gito.worktree.available",
+    },
+    {
+      command: "gito.renameWorktree",
+      group: "navigation@2",
+      when: "view == gito.git && (viewItem == gito.worktree.current || viewItem == gito.worktree.available)",
+    },
+  ]);
+  assert.deepEqual(extensionManifest.contributes.configurationDefaults, {
+    "git.detectWorktrees": true,
+  });
   assert.deepEqual(
-    extensionManifest.contributes.menus?.["view/item/context"]?.map(
-      (menuContribution) => menuContribution.command,
-    ),
-    [
-      "gito.stageChange",
-      "gito.unstageChange",
-      "gito.discardChange",
-      "gito.stageGroup",
-      "gito.unstageGroup",
-    ],
+    extensionManifest.contributes.configuration?.properties["gito.worktrees.storageRoot"],
+    {
+      default: "",
+      markdownDescription:
+        "Absolute folder for linked worktrees. `~` is supported. Empty stores them beside the primary repository under `.gito-worktrees/<repository>/`.",
+      scope: "machine",
+      type: "string",
+    },
   );
   assert.deepEqual(extensionManifest.contributes.views.gito, [
     { id: "gito.git", name: "Git" },

@@ -22,6 +22,13 @@ import {
 import { createGitSidebarTreeItemId } from "./gitSidebarIdentity.ts";
 import { listRemoteTagReferences } from "./remoteTags.ts";
 import type { WorkspaceRepositories } from "./workspaceRepositories.ts";
+import {
+  createRepositoryFamilyKey,
+  findPrimaryWorktree,
+  formatWorktreeBranchName,
+  selectRepositoryFamilyRepresentatives,
+} from "./worktreeModel.ts";
+import type { Worktrees } from "./worktrees.ts";
 
 interface RemoteTagSnapshot {
   readonly remoteName: string;
@@ -38,8 +45,15 @@ interface BranchLagRefresh {
   readonly promise: Promise<void>;
 }
 
-type GitSidebarNode =
+export type GitSidebarNode =
   | { readonly nodeType: "repository"; readonly repository: GitRepository }
+  | { readonly nodeType: "worktreeGroup"; readonly repository: GitRepository }
+  | { readonly nodeType: "createWorktree"; readonly repository: GitRepository }
+  | {
+      readonly nodeType: "worktree";
+      readonly repository: GitRepository;
+      readonly worktree: GitRepository["state"]["worktrees"][number];
+    }
   | {
       readonly nodeType: "createReference";
       readonly referenceType: RepositoryReferenceType;
@@ -85,6 +99,7 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
   private readonly branchLagRefreshes = new Map<string, BranchLagRefresh>();
   private readonly remoteTagComparisonTokens = new Map<string, symbol>();
   private readonly remoteTagSnapshots = new Map<string, RemoteTagSnapshot>();
+  private readonly worktreeSubscription: vscode.Disposable;
   private readonly workspaceRepositorySubscription: vscode.Disposable;
   private readonly treeChangedEmitter = new vscode.EventEmitter<GitSidebarNode | undefined>();
   private scheduledRefresh: ReturnType<typeof setTimeout> | undefined;
@@ -95,15 +110,18 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
   public constructor(
     private readonly gitApi: GitApi,
     private readonly workspaceRepositories: WorkspaceRepositories,
+    private readonly worktrees: Worktrees,
     private readonly diagnostics: vscode.LogOutputChannel,
   ) {
     this.workspaceRepositorySubscription = workspaceRepositories.onDidChange(() =>
       this.scheduleRefresh(),
     );
+    this.worktreeSubscription = worktrees.onDidChange(() => this.refresh());
   }
 
   public dispose(): void {
     this.workspaceRepositorySubscription.dispose();
+    this.worktreeSubscription.dispose();
     if (this.scheduledRefresh !== undefined) {
       clearTimeout(this.scheduledRefresh);
     }
@@ -120,6 +138,17 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
     switch (parentNode.nodeType) {
       case "repository":
         return createRepositoryChildren(parentNode.repository);
+      case "worktreeGroup":
+        return [
+          { nodeType: "createWorktree", repository: parentNode.repository },
+          ...parentNode.repository.state.worktrees.map(
+            (worktree): GitSidebarNode => ({
+              nodeType: "worktree",
+              repository: parentNode.repository,
+              worktree,
+            }),
+          ),
+        ];
       case "referenceGroup":
         return parentNode.referenceType === "branch"
           ? this.getBranchGroupChildren(parentNode.repository)
@@ -141,6 +170,24 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
     switch (sidebarNode.nodeType) {
       case "repository":
         return this.createRepositoryTreeItem(sidebarNode.repository);
+      case "worktreeGroup":
+        return this.createWorktreeGroupTreeItem(sidebarNode.repository);
+      case "createWorktree":
+        return createCommandTreeItem(
+          createGitSidebarTreeItemId(
+            createRepositoryFamilyKey(
+              sidebarNode.repository.rootUri.fsPath,
+              sidebarNode.repository.state.worktrees,
+            ),
+            "create-worktree",
+          ),
+          "Create Feature Worktree…",
+          "add",
+          "gito.createWorktree",
+          sidebarNode.repository.rootUri,
+        );
+      case "worktree":
+        return this.createWorktreeTreeItem(sidebarNode);
       case "createReference":
         return this.createReferenceActionTreeItem(sidebarNode);
       case "switchReference":
@@ -638,12 +685,29 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
   }
 
   private getWorkspaceRepositories(): readonly GitRepository[] {
-    return this.workspaceRepositories.repositories;
+    const workspaceRepositories = this.workspaceRepositories.repositories;
+    const representativeRepositoryPaths = selectRepositoryFamilyRepresentatives(
+      workspaceRepositories.map((repository) => ({
+        repositoryPath: repository.rootUri.fsPath,
+        worktrees: repository.state.worktrees,
+      })),
+      this.workspaceRepositories.selectedRepository?.rootUri.fsPath,
+    );
+    return representativeRepositoryPaths.flatMap((representativeRepositoryPath) => {
+      const representativeRepository = workspaceRepositories.find(
+        (repository) => repository.rootUri.fsPath === representativeRepositoryPath,
+      );
+      return representativeRepository === undefined ? [] : [representativeRepository];
+    });
   }
 
   private createRepositoryTreeItem(repository: GitRepository): vscode.TreeItem {
+    const primaryWorktree = findPrimaryWorktree(
+      repository.rootUri.fsPath,
+      repository.state.worktrees,
+    );
     const repositoryName =
-      repository.rootUri.path.split("/").filter(Boolean).at(-1) ?? repository.rootUri.fsPath;
+      primaryWorktree.path.split(/[\\/]/u).filter(Boolean).at(-1) ?? primaryWorktree.path;
     const currentReference = repository.state.HEAD;
     const branchName = currentReference?.name ?? "Detached HEAD";
     const currentReferenceIconId = currentReference?.name === undefined ? "git-commit" : "git-branch";
@@ -652,7 +716,7 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
       vscode.TreeItemCollapsibleState.Expanded,
     );
     repositoryTreeItem.id = createGitSidebarTreeItemId(
-      repository.rootUri.fsPath,
+      createRepositoryFamilyKey(repository.rootUri.fsPath, repository.state.worktrees),
       "repository",
     );
     const changeCount = countRepositoryChanges(repository.state);
@@ -685,6 +749,66 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
       label: `${repositoryName} repository, ${branchName} ${branchName === "Detached HEAD" ? "state" : "branch"}`,
     };
     return repositoryTreeItem;
+  }
+
+  private createWorktreeGroupTreeItem(repository: GitRepository): vscode.TreeItem {
+    const worktreeGroupTreeItem = new vscode.TreeItem(
+      "Worktrees",
+      vscode.TreeItemCollapsibleState.Expanded,
+    );
+    worktreeGroupTreeItem.id = createGitSidebarTreeItemId(
+      createRepositoryFamilyKey(repository.rootUri.fsPath, repository.state.worktrees),
+      "worktree-group",
+    );
+    worktreeGroupTreeItem.description = String(repository.state.worktrees.length);
+    worktreeGroupTreeItem.iconPath = new vscode.ThemeIcon("repo-forked");
+    worktreeGroupTreeItem.tooltip =
+      "Primary and linked worktrees for this repository. Each worktree has independent files, staging, and uncommitted changes.";
+    return worktreeGroupTreeItem;
+  }
+
+  private createWorktreeTreeItem(
+    worktreeNode: Extract<GitSidebarNode, { readonly nodeType: "worktree" }>,
+  ): vscode.TreeItem {
+    const { repository, worktree } = worktreeNode;
+    const worktreeDisplayName = this.worktrees.getDisplayName(worktree);
+    const isCurrentWorktree =
+      vscode.Uri.file(worktree.path).fsPath === vscode.Uri.file(repository.rootUri.fsPath).fsPath;
+    const branchName = formatWorktreeBranchName(worktree);
+    const worktreeTreeItem = new vscode.TreeItem(worktreeDisplayName);
+    worktreeTreeItem.id = createGitSidebarTreeItemId(
+      createRepositoryFamilyKey(repository.rootUri.fsPath, repository.state.worktrees),
+      "worktree",
+      worktree.path,
+    );
+    worktreeTreeItem.contextValue = isCurrentWorktree
+      ? "gito.worktree.current"
+      : "gito.worktree.available";
+    worktreeTreeItem.description = [
+      isCurrentWorktree ? "Current" : undefined,
+      branchName,
+      worktree.main ? "Primary" : undefined,
+    ]
+      .filter((worktreeDetail): worktreeDetail is string => worktreeDetail !== undefined)
+      .join(" · ");
+    worktreeTreeItem.iconPath = new vscode.ThemeIcon(
+      worktree.main ? "repo" : "repo-forked",
+      isCurrentWorktree ? new vscode.ThemeColor("charts.green") : undefined,
+    );
+    worktreeTreeItem.tooltip = new vscode.MarkdownString(
+      `**${branchName}**\n\n${worktree.main ? "Primary worktree" : "Linked worktree"}\n\n${worktree.path}`,
+    );
+    worktreeTreeItem.accessibilityInformation = {
+      label: `${worktreeDisplayName}, ${branchName}, ${isCurrentWorktree ? "current" : "available"} worktree`,
+    };
+    if (!isCurrentWorktree) {
+      worktreeTreeItem.command = {
+        arguments: [worktree.path],
+        command: "gito.openWorktreeInNewWindow",
+        title: `Open ${worktreeDisplayName} in New Window`,
+      };
+    }
+    return worktreeTreeItem;
   }
 
   private createReferenceActionTreeItem(
@@ -793,6 +917,7 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
 
 function createRepositoryChildren(repository: GitRepository): GitSidebarNode[] {
   return [
+    { nodeType: "worktreeGroup", repository },
     { nodeType: "referenceGroup", referenceType: "branch", repository },
     { nodeType: "referenceGroup", referenceType: "tag", repository },
   ];
