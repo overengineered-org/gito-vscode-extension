@@ -1,0 +1,165 @@
+{
+  "name": "gito",
+  "displayName": "Git'o",
+  "description": "Work with local Git repositories, branches, and tags from a focused sidebar.",
+  "version": "0.8.9",
+  "publisher": "overengineered-org",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/overengineered-org/gito-vscode-extension.git"
+  },
+  "type": "module",
+  "engines": {
+    "vscode": "^1.134.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "main": "./dist/extension.cjs",
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gito",
+          "title": "Git'o",
+          "icon": "media/gito.svg"
+        }
+      ]
+    },
+    "views": {
+      "gito": [
+        {
+          "id": "gito.git",
+          "name": "Git"
+        },
+        {
+          "id": "gito.commit",
+          "name": "Commit",
+          "type": "webview",
+          "visibility": "visible"
+        },
+        {
+          "id": "gito.changes",
+          "name": "Changes",
+          "visibility": "visible"
+        },
+        {
+          "id": "gito.graph",
+          "name": "Graph",
+          "type": "webview",
+          "visibility": "visible"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "gito.stageChange",
+        "title": "Stage Change",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gito.unstageChange",
+        "title": "Unstage Change",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "gito.discardChange",
+        "title": "Discard Change",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "gito.stageGroup",
+        "title": "Stage All Changes",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gito.unstageGroup",
+        "title": "Unstage All Changes",
+        "icon": "$(remove)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "gito.stageChange",
+          "when": "false"
+        },
+        {
+          "command": "gito.unstageChange",
+          "when": "false"
+        },
+        {
+          "command": "gito.discardChange",
+          "when": "false"
+        },
+        {
+          "command": "gito.stageGroup",
+          "when": "false"
+        },
+        {
+          "command": "gito.unstageGroup",
+          "when": "false"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "gito.stageChange",
+          "when": "view == gito.changes && (viewItem == gito.change.unstaged || viewItem == gito.change.conflicts)",
+          "group": "inline"
+        },
+        {
+          "command": "gito.unstageChange",
+          "when": "view == gito.changes && viewItem == gito.change.staged",
+          "group": "inline"
+        },
+        {
+          "command": "gito.discardChange",
+          "when": "view == gito.changes && viewItem == gito.change.unstaged",
+          "group": "navigation"
+        },
+        {
+          "command": "gito.stageGroup",
+          "when": "view == gito.changes && (viewItem == gito.group.unstaged || viewItem == gito.group.conflicts)",
+          "group": "inline"
+        },
+        {
+          "command": "gito.unstageGroup",
+          "when": "view == gito.changes && viewItem == gito.group.staged",
+          "group": "inline"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "gito.git",
+        "contents": "Choose how to start.\n[Clone Repository](command:git.clone)\n[Open Folder](command:vscode.openFolder)"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.cjs",
+    "check": "npm run typecheck && npm test && npm run build",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@types/vscode": "^1.134.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
