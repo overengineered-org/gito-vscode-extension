@@ -4,8 +4,8 @@ import * as vscode from "vscode";
 
 import { CoalescedAsyncRunner } from "./coalescedAsyncRunner.ts";
 import type { GitRepository } from "./gitApi.ts";
+import { loadCommitGraphPage } from "./graphHistory.ts";
 import type { GitReference } from "./gitModel.ts";
-import { buildCommitGraphRows } from "./graphModel.ts";
 import type { WorkspaceRepositories } from "./workspaceRepositories.ts";
 
 interface GraphViewMessage {
@@ -29,7 +29,10 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
   private webviewReady = false;
   private webviewView: vscode.WebviewView | undefined;
 
-  public constructor(private readonly workspaceRepositories: WorkspaceRepositories) {
+  public constructor(
+    private readonly workspaceRepositories: WorkspaceRepositories,
+    private readonly diagnostics: vscode.LogOutputChannel,
+  ) {
     this.refreshRunner = new CoalescedAsyncRunner((forceRefresh) =>
       this.refresh(forceRefresh),
     );
@@ -77,9 +80,10 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
 
   private async handleMessage(graphViewMessage: GraphViewMessage): Promise<void> {
     if (graphViewMessage.type === "ready") {
+      this.diagnostics.debug("Graph webview ready.");
       this.webviewReady = true;
       this.lastGraphSourceKey = undefined;
-      this.scheduleRefresh(0, true);
+      await this.refreshRunner.requestRefresh(true);
       return;
     }
     if (graphViewMessage.type === "loadMore") {
@@ -102,11 +106,18 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
     ) {
       const selectedRepository = this.workspaceRepositories.selectedRepository;
       if (selectedRepository?.rootUri.fsPath === graphViewMessage.repositoryPath) {
-        await vscode.commands.executeCommand(
-          "git.viewCommit",
-          selectedRepository.rootUri,
-          graphViewMessage.commitHash,
-        );
+        try {
+          await vscode.commands.executeCommand(
+            "git.viewCommit",
+            selectedRepository.rootUri,
+            graphViewMessage.commitHash,
+          );
+        } catch (commitViewFailure) {
+          this.diagnostics.error("Opening the native commit diff failed.", commitViewFailure);
+          void vscode.window.showErrorMessage(
+            "Git'o could not open this commit. Check the Git output, then retry.",
+          );
+        }
       }
     }
   }
@@ -144,6 +155,19 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
       this.graphEntryLimit = graphPageSize;
       forceRefresh = true;
     }
+    if (selectedRepository.state.HEAD?.commit === undefined) {
+      this.lastGraphSourceKey = undefined;
+      void this.webviewView?.webview.postMessage({
+        hasMore: false,
+        repositoryName:
+          selectedRepository.rootUri.path.split("/").filter(Boolean).at(-1) ??
+          selectedRepository.rootUri.fsPath,
+        repositoryPath: selectedRepository.rootUri.fsPath,
+        rows: [],
+        type: "state",
+      });
+      return;
+    }
 
     try {
       const [branchReferences, tagReferences] = await Promise.all([
@@ -163,16 +187,14 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
         return;
       }
       void this.webviewView?.webview.postMessage({ type: "loading" });
-      const graphReferenceNames = [...new Set([...branchReferences, ...tagReferences].flatMap(
-        (gitReference) =>
-          gitReference.name === undefined || gitReference.name.endsWith("/HEAD")
-            ? []
-            : [gitReference.name],
-      ))];
-      const gitCommits = await selectedRepository.log({
-        maxEntries: this.graphEntryLimit,
-        ...(graphReferenceNames.length === 0 ? {} : { refNames: graphReferenceNames }),
-      });
+      this.diagnostics.debug(
+        `Loading Git history from HEAD for ${selectedRepository.rootUri.fsPath}.`,
+      );
+      const commitGraphPage = await loadCommitGraphPage(
+        selectedRepository,
+        allGraphReferences,
+        this.graphEntryLimit,
+      );
       if (
         this.workspaceRepositories.selectedRepository?.rootUri.fsPath !==
         selectedRepository.rootUri.fsPath
@@ -184,20 +206,19 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
         return;
       }
       const graphStateDelivered = await targetWebviewView.webview.postMessage({
-        hasMore:
-          gitCommits.length === this.graphEntryLimit &&
-          this.graphEntryLimit < maximumGraphEntries,
+        hasMore: commitGraphPage.hasMore && this.graphEntryLimit < maximumGraphEntries,
         repositoryName:
           selectedRepository.rootUri.path.split("/").filter(Boolean).at(-1) ??
           selectedRepository.rootUri.fsPath,
         repositoryPath: selectedRepository.rootUri.fsPath,
-        rows: buildCommitGraphRows(gitCommits, allGraphReferences),
+        rows: commitGraphPage.rows,
         type: "state",
       });
       if (graphStateDelivered && this.webviewView === targetWebviewView) {
         this.lastGraphSourceKey = graphSourceKey;
       }
-    } catch {
+    } catch (graphFailure) {
+      this.diagnostics.error("Graph refresh failed.", graphFailure);
       if (
         this.workspaceRepositories.selectedRepository?.rootUri.fsPath ===
         selectedRepository.rootUri.fsPath
@@ -312,7 +333,7 @@ function createGraphViewHtml(): string {
       commitRowElement.tabIndex = 0;
       commitRowElement.setAttribute('role', 'button');
       commitRowElement.setAttribute('aria-label', commitRow.subject + ', ' + commitRow.authorName + ', ' + exactDate(commitRow.committedAt));
-      commitRowElement.title = commitRow.hash + '\n' + commitRow.authorName + '\n' + exactDate(commitRow.committedAt);
+      commitRowElement.title = commitRow.hash + '\\n' + commitRow.authorName + '\\n' + exactDate(commitRow.committedAt);
       commitRowElement.append(createGraph(commitRow), createCommitDetails(commitRow));
       commitRowElement.addEventListener('click', () => openCommit(commitRow.hash));
       commitRowElement.addEventListener('keydown', keyboardEvent => {

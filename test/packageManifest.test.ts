@@ -50,13 +50,22 @@ test("ships one desktop path backed by VS Code Git", () => {
       commandContribution.command,
     ),
     [
+      "gito.compareRemoteTags",
       "gito.stageChange",
       "gito.unstageChange",
       "gito.discardChange",
       "gito.stageGroup",
       "gito.unstageGroup",
+      "gito.toggleCommitDiffLayout",
     ],
   );
+  assert.deepEqual(extensionManifest.contributes.menus?.["editor/title"], [
+    {
+      command: "gito.toggleCommitDiffLayout",
+      group: "navigation@10",
+      when: "activeEditor == multiDiffEditor",
+    },
+  ]);
   assert.deepEqual(
     extensionManifest.contributes.menus?.["view/item/context"]?.map(
       (menuContribution) => menuContribution.command,

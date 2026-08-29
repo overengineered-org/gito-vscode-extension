@@ -1,6 +1,8 @@
+.integration-test/**
 .git/**
 .gitignore
 .vscode/**
+.vscode-test/**
 src/**
 test/**
 node_modules/**

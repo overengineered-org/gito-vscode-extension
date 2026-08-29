@@ -21,7 +21,7 @@ export async function listRemoteTagReferences(
 
 export function parseRemoteTagReferences(remoteTagOutput: string): readonly GitReference[] {
   const remoteTagsByName = new Map<string, GitReference>();
-  for (const remoteTagLine of remoteTagOutput.split("\n")) {
+  for (const remoteTagLine of remoteTagOutput.split(/\r?\n/u)) {
     const remoteTagMatch = remoteTagLine.match(remoteTagLinePattern);
     const remoteTagCommit = remoteTagMatch?.[1];
     const remoteTagName = remoteTagMatch?.[2];
@@ -51,7 +51,8 @@ function executeGitLsRemote(
   return new Promise((resolveRemoteTagOutput, rejectRemoteTagCheck) => {
     execFile(
       gitExecutablePath,
-      ["ls-remote", "--tags", remoteName],
+      // VS Code's getRemoteRefs omits peeled annotated-tag targets, so use its Git and auth env.
+      ["ls-remote", "--tags", "--", remoteName],
       {
         cwd: repositoryRootPath,
         encoding: "utf8",

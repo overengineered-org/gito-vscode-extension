@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 
+import { extractGeneratedBrowserScript } from "./webviewTestUtils.ts";
+
 class SimulatedWebviewElement {
   public clientHeight = 34;
   public clientWidth = 300;
@@ -37,19 +39,9 @@ const commitViewSource = readFileSync(
   new URL("../src/commitView.ts", import.meta.url),
   "utf8",
 );
-const scriptOpeningMarker = '<script nonce="${nonce}">';
-const embeddedScriptStart =
-  commitViewSource.indexOf(scriptOpeningMarker) + scriptOpeningMarker.length;
-const embeddedScriptEnd = commitViewSource.indexOf("</script>", embeddedScriptStart);
-const embeddedCommitViewScript = commitViewSource.slice(
-  embeddedScriptStart,
-  embeddedScriptEnd,
-);
+const generatedCommitViewScript = extractGeneratedBrowserScript(commitViewSource);
 
 test("highlights commit subject graphemes beyond 50 without highlighting the body", () => {
-  assert.ok(embeddedScriptStart >= scriptOpeningMarker.length);
-  assert.ok(embeddedScriptEnd > embeddedScriptStart);
-
   const simulatedElements = new Map<string, SimulatedWebviewElement>();
   let windowMessageListener: ((event: unknown) => void) | undefined;
   const getSimulatedElement = (elementId: string): SimulatedWebviewElement => {
@@ -67,7 +59,7 @@ test("highlights commit subject graphemes beyond 50 without highlighting the bod
     getElementById: getSimulatedElement,
   };
 
-  runInNewContext(embeddedCommitViewScript, {
+  runInNewContext(generatedCommitViewScript, {
     acquireVsCodeApi: () => ({ postMessage: () => undefined }),
     document: simulatedDocument,
     Intl,

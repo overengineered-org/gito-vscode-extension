@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 import { createBranchPresentation } from "./branchPresentation.ts";
-import type { GitApi, GitRepository } from "./gitApi.ts";
+import { type GitApi, type GitRepository, loadGitCommitsWithTimeout } from "./gitApi.ts";
 import {
   type BranchAvailability,
   type BranchLocation,
@@ -11,6 +11,7 @@ import {
   determineCurrentBranchSyncStatus,
   type GitReference,
   GitReferenceType,
+  type NamedGitReference,
   listBranchLagNotices,
   listPrunableLocalBranches,
   listSwitchableReferences,
@@ -28,8 +29,13 @@ interface RemoteTagSnapshot {
 }
 
 interface BranchLagSnapshot {
-  readonly branchStateKey: string;
   readonly branchLagNotices: readonly BranchLagNotice[];
+  readonly repositoryStateKey: string;
+}
+
+interface BranchLagRefresh {
+  readonly repositoryStateKey: string;
+  readonly promise: Promise<void>;
 }
 
 type GitSidebarNode =
@@ -76,22 +82,31 @@ type GitSidebarNode =
 
 export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vscode.Disposable {
   private readonly branchLagSnapshots = new Map<string, BranchLagSnapshot>();
+  private readonly branchLagRefreshes = new Map<string, BranchLagRefresh>();
   private readonly remoteTagComparisonTokens = new Map<string, symbol>();
   private readonly remoteTagSnapshots = new Map<string, RemoteTagSnapshot>();
   private readonly workspaceRepositorySubscription: vscode.Disposable;
   private readonly treeChangedEmitter = new vscode.EventEmitter<GitSidebarNode | undefined>();
+  private scheduledRefresh: ReturnType<typeof setTimeout> | undefined;
+  private workspaceStateVersion = 0;
 
   public readonly onDidChangeTreeData = this.treeChangedEmitter.event;
 
   public constructor(
     private readonly gitApi: GitApi,
     private readonly workspaceRepositories: WorkspaceRepositories,
+    private readonly diagnostics: vscode.LogOutputChannel,
   ) {
-    this.workspaceRepositorySubscription = workspaceRepositories.onDidChange(() => this.refresh());
+    this.workspaceRepositorySubscription = workspaceRepositories.onDidChange(() =>
+      this.scheduleRefresh(),
+    );
   }
 
   public dispose(): void {
     this.workspaceRepositorySubscription.dispose();
+    if (this.scheduledRefresh !== undefined) {
+      clearTimeout(this.scheduledRefresh);
+    }
     this.treeChangedEmitter.dispose();
   }
 
@@ -247,11 +262,18 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
         remoteName,
         tagReferences: remoteTagReferences,
       });
+      // Tree nodes are rebuilt on demand, so a newly-created repository node is
+      // not the same object currently held by VS Code. Refresh the root to make
+      // the saved comparison visible immediately.
       this.treeChangedEmitter.fire(undefined);
       void vscode.window.showInformationMessage(
         `Git'o: Compared ${remoteTagReferences.length} remote ${remoteTagReferences.length === 1 ? "tag" : "tags"} with ${remoteName}.`,
       );
-    } catch {
+    } catch (tagComparisonFailure) {
+      this.diagnostics.error(
+        `Remote tag comparison failed for '${remoteName}'.`,
+        tagComparisonFailure,
+      );
       if (this.remoteTagComparisonTokens.get(repositoryPath) === comparisonToken) {
         void vscode.window.showErrorMessage(
           `Git'o could not read tags from '${remoteName}'. Check the remote and VS Code's Git authentication, then retry.`,
@@ -340,7 +362,8 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
         pattern: ["refs/heads", "refs/remotes"],
         sort: "alphabetically",
       });
-    } catch {
+    } catch (branchRefreshFailure) {
+      this.diagnostics.error("Remote branch refresh failed.", branchRefreshFailure);
       void vscode.window.showErrorMessage(
         "Git'o could not refresh remote branches. No local branches were deleted.",
       );
@@ -394,7 +417,11 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
           repository.rootUri,
           selectedBranch.branchName,
         );
-      } catch {
+      } catch (branchDeletionFailure) {
+        this.diagnostics.error(
+          `Local branch deletion failed for '${selectedBranch.branchName}'.`,
+          branchDeletionFailure,
+        );
         branchesThatCouldNotBeDeleted.push(selectedBranch.branchName);
       }
     }
@@ -406,13 +433,11 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
   }
 
   private async getBranchGroupChildren(repository: GitRepository): Promise<GitSidebarNode[]> {
-    const [allBranches, branchLagNotices] = await Promise.all([
-      repository.getRefs({
-        pattern: ["refs/heads", "refs/remotes"],
-        sort: "alphabetically",
-      }),
-      this.getCurrentBranchLagNotices(repository),
-    ]);
+    const allBranches = await repository.getRefs({
+      pattern: ["refs/heads", "refs/remotes"],
+      sort: "alphabetically",
+    });
+    const branchLagNotices = this.getCurrentBranchLagNotices(repository);
     const { localBranches, remoteTrackingBranches } = buildBranchInventory(
       allBranches,
       repository.state.HEAD,
@@ -459,9 +484,7 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
     ];
   }
 
-  private async getCurrentBranchLagNotices(
-    repository: GitRepository,
-  ): Promise<readonly BranchLagNotice[]> {
+  private getCurrentBranchLagNotices(repository: GitRepository): readonly BranchLagNotice[] {
     const currentBranch = repository.state.HEAD;
     if (
       currentBranch?.name === undefined ||
@@ -470,40 +493,78 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
       return [];
     }
 
+    const namedCurrentBranch: NamedGitReference = {
+      ...currentBranch,
+      name: currentBranch.name,
+    };
+    const repositoryStateKey = createRepositoryStateKey(
+      namedCurrentBranch,
+      this.workspaceStateVersion,
+    );
+    const repositoryPath = repository.rootUri.fsPath;
+    const cachedBranchLag = this.branchLagSnapshots.get(repositoryPath);
+    if (cachedBranchLag?.repositoryStateKey === repositoryStateKey) {
+      return cachedBranchLag.branchLagNotices;
+    }
+    if (
+      this.branchLagRefreshes.get(repositoryPath)?.repositoryStateKey !== repositoryStateKey
+    ) {
+      const branchLagRefreshPromise = this.refreshBranchLagSnapshot(
+        repository,
+        namedCurrentBranch,
+        repositoryStateKey,
+      ).finally(() => {
+        if (this.branchLagRefreshes.get(repositoryPath)?.promise === branchLagRefreshPromise) {
+          this.branchLagRefreshes.delete(repositoryPath);
+        }
+      });
+      this.branchLagRefreshes.set(repositoryPath, {
+        repositoryStateKey,
+        promise: branchLagRefreshPromise,
+      });
+    }
+    return [];
+  }
+
+  private async refreshBranchLagSnapshot(
+    repository: GitRepository,
+    currentBranch: NamedGitReference,
+    repositoryStateKey: string,
+  ): Promise<void> {
+    let branchLagNotices: readonly BranchLagNotice[] = [];
     try {
       const sourceBranch = await repository.getBranchBase(currentBranch.name);
-      if (sourceBranch?.name === undefined) {
-        return [];
+      if (sourceBranch?.name !== undefined) {
+        const sourceBranchName = formatBranchReferenceName(sourceBranch);
+        const commitsBehindSource = await loadGitCommitsWithTimeout(repository, {
+          maxEntries: 1_001,
+          range: `${currentBranch.name}..${sourceBranchName}`,
+        });
+        branchLagNotices = listBranchLagNotices(currentBranch, {
+          behindCommitCount: commitsBehindSource.length,
+          referenceName: sourceBranchName,
+        }).filter((branchLagNotice) => branchLagNotice.comparisonKind === "source");
       }
-      const sourceBranchName = formatBranchReferenceName(sourceBranch);
-      const branchStateKey = [
-        currentBranch.name,
-        currentBranch.commit ?? "",
-        currentBranch.behind ?? 0,
-        sourceBranchName,
-        sourceBranch.commit ?? "",
-      ].join(":");
-      const repositoryPath = repository.rootUri.fsPath;
-      const cachedBranchLag = this.branchLagSnapshots.get(repositoryPath);
-      if (cachedBranchLag?.branchStateKey === branchStateKey) {
-        return cachedBranchLag.branchLagNotices;
-      }
-      const commitsBehindSource = await repository.log({
-        maxEntries: 1_001,
-        range: `${currentBranch.name}..${sourceBranchName}`,
-      });
-      const branchLagNotices = listBranchLagNotices(currentBranch, {
-        behindCommitCount: commitsBehindSource.length,
-        referenceName: sourceBranchName,
-      }).filter((branchLagNotice) => branchLagNotice.comparisonKind === "source");
-      this.branchLagSnapshots.set(repositoryPath, {
-        branchStateKey,
-        branchLagNotices,
-      });
-      return branchLagNotices;
-    } catch {
-      return [];
+    } catch (branchLagFailure) {
+      this.diagnostics.warn("Source branch comparison failed.", branchLagFailure);
     }
+    const currentRepository = this.workspaceRepositories.findRepository(repository.rootUri.fsPath);
+    const currentHead = currentRepository?.state.HEAD;
+    if (
+      currentRepository === undefined ||
+      currentHead?.name === undefined ||
+      createRepositoryStateKey(
+        { ...currentHead, name: currentHead.name },
+        this.workspaceStateVersion,
+      ) !== repositoryStateKey
+    ) {
+      return;
+    }
+    this.branchLagSnapshots.set(repository.rootUri.fsPath, {
+      branchLagNotices,
+      repositoryStateKey,
+    });
+    this.treeChangedEmitter.fire(undefined);
   }
 
   private async getTagGroupChildren(repository: GitRepository): Promise<GitSidebarNode[]> {
@@ -529,6 +590,7 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
   }
 
   private refresh(): void {
+    this.workspaceStateVersion += 1;
     const workspaceRepositoryPaths = new Set(
       this.getWorkspaceRepositories().map((repository) => repository.rootUri.fsPath),
     );
@@ -547,6 +609,11 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
         this.branchLagSnapshots.delete(repositoryPath);
       }
     }
+    for (const repositoryPath of this.branchLagRefreshes.keys()) {
+      if (!workspaceRepositoryPaths.has(repositoryPath)) {
+        this.branchLagRefreshes.delete(repositoryPath);
+      }
+    }
     for (const repository of this.getWorkspaceRepositories()) {
       const repositoryPath = repository.rootUri.fsPath;
       const remoteTagSnapshot = this.remoteTagSnapshots.get(repositoryPath);
@@ -558,6 +625,16 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
       }
     }
     this.treeChangedEmitter.fire(undefined);
+  }
+
+  private scheduleRefresh(): void {
+    if (this.scheduledRefresh !== undefined) {
+      clearTimeout(this.scheduledRefresh);
+    }
+    this.scheduledRefresh = setTimeout(() => {
+      this.scheduledRefresh = undefined;
+      this.refresh();
+    }, 100);
   }
 
   private getWorkspaceRepositories(): readonly GitRepository[] {
@@ -795,6 +872,21 @@ function formatBranchReferenceName(branchReference: GitReference): string {
     !branchReference.name.startsWith(`${branchReference.remote}/`)
     ? `${branchReference.remote}/${branchReference.name}`
     : branchReference.name;
+}
+
+function createRepositoryStateKey(
+  currentBranch: NamedGitReference,
+  workspaceStateVersion: number,
+): string {
+  return [
+    workspaceStateVersion,
+    currentBranch.name,
+    currentBranch.commit ?? "",
+    currentBranch.ahead ?? "",
+    currentBranch.behind ?? "",
+    currentBranch.upstream?.remote ?? "",
+    currentBranch.upstream?.name ?? "",
+  ].join(":");
 }
 
 interface TagPresentation {

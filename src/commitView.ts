@@ -24,7 +24,10 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
   private webviewReady = false;
   private webviewView: vscode.WebviewView | undefined;
 
-  public constructor(private readonly workspaceRepositories: WorkspaceRepositories) {
+  public constructor(
+    private readonly workspaceRepositories: WorkspaceRepositories,
+    private readonly diagnostics: vscode.LogOutputChannel,
+  ) {
     this.changedSubscription = workspaceRepositories.onDidChange(() => this.postCommitViewState());
   }
 
@@ -119,7 +122,8 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
       if (selectedGitAction !== undefined) {
         await vscode.commands.executeCommand(selectedGitAction.command, repository.rootUri);
       }
-    } catch {
+    } catch (gitActionFailure) {
+      this.diagnostics.error("Native Git action failed.", gitActionFailure);
       failureMessage =
         selectedGitAction === undefined
           ? "Git action selection failed. Retry from the action menu."
@@ -374,7 +378,7 @@ function createCommitViewHtml(): string {
     }
 
     function updateCommitMessagePresentation() {
-      const firstLineBreak = commitMessageInput.value.indexOf('\n');
+      const firstLineBreak = commitMessageInput.value.indexOf('\\n');
       const commitSubject = firstLineBreak === -1 ? commitMessageInput.value : commitMessageInput.value.slice(0, firstLineBreak);
       const commitBody = firstLineBreak === -1 ? '' : commitMessageInput.value.slice(firstLineBreak);
       const subjectGraphemes = graphemeSegmenter
@@ -383,7 +387,7 @@ function createCommitViewHtml(): string {
       const overflowCount = Math.max(0, subjectGraphemes.length - idealCommitSubjectLength);
       messageWithinLimit.textContent = subjectGraphemes.slice(0, idealCommitSubjectLength).join('');
       messageOverflow.textContent = subjectGraphemes.slice(idealCommitSubjectLength).join('');
-      messageBody.textContent = commitBody + (commitBody.endsWith('\n') ? '\u200b' : '');
+      messageBody.textContent = commitBody + (commitBody.endsWith('\\n') ? '\u200b' : '');
       messageCount.textContent = overflowCount === 0
         ? subjectGraphemes.length + '/' + idealCommitSubjectLength
         : subjectGraphemes.length + '/' + idealCommitSubjectLength + ' · ' + overflowCount + ' over';

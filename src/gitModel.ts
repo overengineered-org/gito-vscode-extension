@@ -95,6 +95,21 @@ export function buildBranchInventory(
       removeRemotePrefix(remoteBranchReference.name, remoteBranchReference.remote),
     ),
   );
+  const remoteTrackingBranchNames = new Set(
+    remoteTrackingBranchReferences.map((remoteBranchReference) => remoteBranchReference.name),
+  );
+  const trackedRemoteBranchNames = new Set(
+    localBranchReferences.flatMap((localBranchReference) =>
+      localBranchReference.upstream === undefined
+        ? []
+        : [
+            formatRemoteBranchName(
+              localBranchReference.upstream.remote,
+              localBranchReference.upstream.name,
+            ),
+          ],
+    ),
+  );
 
   return {
     localBranches: localBranchReferences.map((localBranchReference): BranchAvailability => {
@@ -105,7 +120,15 @@ export function buildBranchInventory(
           : localBranchReference;
       return {
         availableLocally: true,
-        availableRemotely: remoteBranchNames.has(localBranchReference.name),
+        availableRemotely:
+          remoteBranchNames.has(localBranchReference.name) ||
+          (localBranchReference.upstream !== undefined &&
+            remoteTrackingBranchNames.has(
+              formatRemoteBranchName(
+                localBranchReference.upstream.remote,
+                localBranchReference.upstream.name,
+              ),
+            )),
         ...(isCurrent
           ? { currentSyncStatus: determineCurrentBranchSyncStatus(effectiveBranchReference) }
           : {}),
@@ -116,9 +139,10 @@ export function buildBranchInventory(
     }),
     remoteTrackingBranches: remoteTrackingBranchReferences.map(
       (remoteBranchReference): BranchAvailability => ({
-        availableLocally: localBranchNames.has(
-          removeRemotePrefix(remoteBranchReference.name, remoteBranchReference.remote),
-        ),
+        availableLocally:
+          localBranchNames.has(
+            removeRemotePrefix(remoteBranchReference.name, remoteBranchReference.remote),
+          ) || trackedRemoteBranchNames.has(remoteBranchReference.name),
         availableRemotely: true,
         isCurrent: false,
         location: "remoteTracking",
@@ -191,13 +215,27 @@ export function listPrunableLocalBranches(
         : [],
     ),
   );
+  const remoteTrackingBranchNames = new Set(
+    gitReferences.flatMap((gitReference) =>
+      gitReference.type === GitReferenceType.remoteBranch && gitReference.name !== undefined
+        ? [gitReference.name]
+        : [],
+    ),
+  );
   return sortNamedReferences(
     gitReferences.filter(
       (gitReference) =>
         gitReference.type === GitReferenceType.localBranch &&
         gitReference.name !== undefined &&
         gitReference.name !== currentBranchName &&
-        !remoteBranchNames.has(gitReference.name),
+        !remoteBranchNames.has(gitReference.name) &&
+        (gitReference.upstream === undefined ||
+          !remoteTrackingBranchNames.has(
+            formatRemoteBranchName(
+              gitReference.upstream.remote,
+              gitReference.upstream.name,
+            ),
+          )),
     ),
   );
 }

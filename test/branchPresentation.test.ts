@@ -33,12 +33,12 @@ test("presents every current branch upstream state", () => {
   const expectedPresentations: Readonly<
     Record<CurrentBranchSyncStatus, readonly [string, string, string | undefined]>
   > = {
-    ahead: ["Current · 2 commits ahead", "arrow-up", "charts.purple"],
-    behind: ["Current · 3 commits behind", "arrow-down", "charts.yellow"],
-    diverged: ["Current · 2 ahead · 3 behind", "warning", "charts.red"],
+    ahead: ["Current · 2 commits ahead of origin/main", "arrow-up", "charts.purple"],
+    behind: ["Current · 3 commits behind origin/main", "arrow-down", "charts.yellow"],
+    diverged: ["Current · 2 ahead · 3 behind origin/main", "warning", "charts.red"],
     notTracking: ["Current · No upstream", "circle-large-outline", "charts.yellow"],
-    synced: ["Current · Synced", "pass-filled", "charts.green"],
-    unknown: ["Current · Status unknown", "question", undefined],
+    synced: ["Current · Synced with origin/main", "pass-filled", "charts.green"],
+    unknown: ["Current · Status against origin/main unknown", "question", undefined],
   };
 
   for (const [currentSyncStatus, expectedPresentation] of Object.entries(
@@ -60,6 +60,22 @@ test("presents every current branch upstream state", () => {
     assert.equal(branchPresentation.iconId, expectedPresentation[1]);
     assert.equal(branchPresentation.colorId, expectedPresentation[2]);
   }
+});
+
+test("does not duplicate a remote prefix already present in the upstream name", () => {
+  const branchPresentation = createBranchPresentation({
+    ...createBranchAvailability("local", true),
+    currentSyncStatus: "behind",
+    isCurrent: true,
+    reference: {
+      behind: 1,
+      name: "main",
+      type: GitReferenceType.localBranch,
+      upstream: { name: "origin/main", remote: "origin" },
+    },
+  });
+
+  assert.equal(branchPresentation.description, "Current · 1 commit behind origin/main");
 });
 
 function createBranchAvailability(

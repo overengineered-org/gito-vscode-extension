@@ -46,34 +46,37 @@ function createCurrentBranchPresentation(
 ): BranchPresentation {
   const commitsAhead = branchAvailability.reference.ahead ?? 0;
   const commitsBehind = branchAvailability.reference.behind ?? 0;
+  const upstreamReferenceName = formatUpstreamReferenceName(
+    branchAvailability.reference.upstream,
+  );
   switch (branchAvailability.currentSyncStatus) {
     case "synced":
       return {
         colorId: "charts.green",
-        description: "Current · Synced",
+        description: `Current · Synced with ${upstreamReferenceName}`,
         iconId: "pass-filled",
-        tooltip: "Current branch matches its upstream, based on the latest fetched refs.",
+        tooltip: `Current branch matches ${upstreamReferenceName}, based on the latest fetched refs.`,
       };
     case "ahead":
       return {
         colorId: "charts.purple",
-        description: `Current · ${formatCommitCount(commitsAhead, "ahead")}`,
+        description: `Current · ${formatCommitCount(commitsAhead, `ahead of ${upstreamReferenceName}`)}`,
         iconId: "arrow-up",
-        tooltip: `Current branch is ${formatCommitCount(commitsAhead, "ahead of its upstream")}.`,
+        tooltip: `Current branch is ${formatCommitCount(commitsAhead, `ahead of ${upstreamReferenceName}`)}.`,
       };
     case "behind":
       return {
         colorId: "charts.yellow",
-        description: `Current · ${formatCommitCount(commitsBehind, "behind")}`,
+        description: `Current · ${formatCommitCount(commitsBehind, `behind ${upstreamReferenceName}`)}`,
         iconId: "arrow-down",
-        tooltip: `Current branch is ${formatCommitCount(commitsBehind, "behind its upstream")}. Fetch to refresh this status.`,
+        tooltip: `Current branch is ${formatCommitCount(commitsBehind, `behind ${upstreamReferenceName}`)}. Fetch to refresh this status.`,
       };
     case "diverged":
       return {
         colorId: "charts.red",
-        description: `Current · ${commitsAhead} ahead · ${commitsBehind} behind`,
+        description: `Current · ${commitsAhead} ahead · ${commitsBehind} behind ${upstreamReferenceName}`,
         iconId: "warning",
-        tooltip: `Current branch has diverged from its upstream: ${formatCommitCount(commitsAhead, "ahead")} and ${formatCommitCount(commitsBehind, "behind")}.`,
+        tooltip: `Current branch has diverged from ${upstreamReferenceName}: ${formatCommitCount(commitsAhead, "ahead")} and ${formatCommitCount(commitsBehind, "behind")}.`,
       };
     case "notTracking":
       return {
@@ -85,11 +88,22 @@ function createCurrentBranchPresentation(
     case "unknown":
     default:
       return {
-        description: "Current · Status unknown",
+        description: `Current · Status against ${upstreamReferenceName} unknown`,
         iconId: "question",
-        tooltip: "Current branch has an upstream, but ahead/behind status is unavailable. Fetch to refresh.",
+        tooltip: `Ahead/behind status against ${upstreamReferenceName} is unavailable. Fetch to refresh.`,
       };
   }
+}
+
+function formatUpstreamReferenceName(
+  upstreamReference: BranchAvailability["reference"]["upstream"],
+): string {
+  if (upstreamReference === undefined) {
+    return "upstream";
+  }
+  return upstreamReference.name.startsWith(`${upstreamReference.remote}/`)
+    ? upstreamReference.name
+    : `${upstreamReference.remote}/${upstreamReference.name}`;
 }
 
 function formatCommitCount(commitCount: number, statusLabel: string): string {

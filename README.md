@@ -19,6 +19,7 @@ Desktop VS Code only. Git'o runs beside the repository and requires VS Code's bu
 - Highlight commit subjects beyond the recommended 50-character limit without blocking the commit.
 - Browse staged, conflicted, untracked, and working-tree changes with native file decorations.
 - Explore a compact, paged commit graph with branches, tags, authors, dates, and merge lanes.
+- Toggle commit diffs between unified and side-by-side layouts in the existing commit tab.
 - Refresh automatically when VS Code's Git state changes.
 
 Tag icons use native theme colours: green is synced, yellow is local only, blue is remote only, and red means the same tag name points to different commits.

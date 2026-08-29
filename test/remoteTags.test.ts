@@ -19,7 +19,7 @@ test("resolves annotated and lightweight remote tags to their target commits", (
     `${annotatedTagCommit}\trefs/tags/v1.0.0^{}`,
     `${sha256Commit}\trefs/tags/v2.0.0`,
     "malformed",
-  ].join("\n");
+  ].join("\r\n");
 
   assert.deepEqual(parseRemoteTagReferences(remoteTagOutput), [
     { commit: annotatedTagCommit, name: "v1.0.0", type: GitReferenceType.tag },
@@ -30,4 +30,5 @@ test("resolves annotated and lightweight remote tags to their target commits", (
 test("requests peeled tags with VS Code Git authentication", () => {
   assert.doesNotMatch(remoteTagsSource, /"--refs"/u);
   assert.match(remoteTagsSource, /\.\.\.gitEnvironment/u);
+  assert.match(remoteTagsSource, /\["ls-remote", "--tags", "--", remoteName\]/u);
 });

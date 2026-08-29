@@ -3,9 +3,11 @@ import { basename, dirname, relative } from "node:path";
 import * as vscode from "vscode";
 
 import type { GitChange, GitRepository } from "./gitApi.ts";
+import { createGitSidebarTreeItemId } from "./gitSidebarIdentity.ts";
 import type { WorkspaceRepositories } from "./workspaceRepositories.ts";
 
 type ChangeGroupKind = "conflicts" | "staged" | "unstaged";
+type ChangeAction = "discard" | "stage" | "unstage";
 
 export type ChangesSidebarNode =
   | {
@@ -20,7 +22,7 @@ export type ChangesSidebarNode =
       readonly nodeType: "change";
       readonly repository: GitRepository;
     }
-  | { readonly nodeType: "clean" };
+  | { readonly nodeType: "clean"; readonly repository: GitRepository };
 
 export class ChangesSidebar
   implements vscode.TreeDataProvider<ChangesSidebarNode>, vscode.Disposable
@@ -59,7 +61,9 @@ export class ChangesSidebar
       return [];
     }
     const changeGroups = createChangeGroups(selectedRepository);
-    return changeGroups.length === 0 ? [{ nodeType: "clean" }] : changeGroups;
+    return changeGroups.length === 0
+      ? [{ nodeType: "clean", repository: selectedRepository }]
+      : changeGroups;
   }
 
   public getTreeItem(sidebarNode: ChangesSidebarNode): vscode.TreeItem {
@@ -69,25 +73,44 @@ export class ChangesSidebar
       case "change":
         return createChangeTreeItem(sidebarNode);
       case "clean":
-        return createCleanTreeItem();
+        return createCleanTreeItem(sidebarNode.repository);
     }
   }
 
   public async runChangeAction(
-    nativeGitCommand: "git.clean" | "git.stage" | "git.unstage",
+    changeAction: ChangeAction,
     sidebarNode: ChangesSidebarNode | undefined,
   ): Promise<void> {
-    if (sidebarNode?.nodeType === "change") {
-      await vscode.commands.executeCommand(nativeGitCommand, sidebarNode.change.uri);
+    if (sidebarNode?.nodeType !== "change") {
+      return;
+    }
+    if (changeAction === "stage") {
+      await sidebarNode.repository.add([sidebarNode.change.uri]);
+      return;
+    }
+    if (changeAction === "unstage") {
+      await sidebarNode.repository.revert([sidebarNode.change.uri]);
+      return;
+    }
+    const discardConfirmation = await vscode.window.showWarningMessage(
+      `Discard changes in '${basename(sidebarNode.change.uri.fsPath)}'?`,
+      { modal: true },
+      "Discard Changes",
+    );
+    if (discardConfirmation === "Discard Changes") {
+      await sidebarNode.repository.clean([sidebarNode.change.uri]);
     }
   }
 
   public async runGroupAction(
-    nativeGitCommand: "git.stageAll" | "git.stageAllMerge" | "git.unstageAll",
+    changeAction: "stage" | "unstage",
     sidebarNode: ChangesSidebarNode | undefined,
   ): Promise<void> {
     if (sidebarNode?.nodeType === "group") {
-      await vscode.commands.executeCommand(nativeGitCommand, sidebarNode.repository.rootUri);
+      const changeUris = sidebarNode.changes.map((change) => change.uri);
+      await (changeAction === "stage"
+        ? sidebarNode.repository.add(changeUris)
+        : sidebarNode.repository.revert(changeUris));
     }
   }
 }
@@ -123,6 +146,11 @@ function createChangeGroupTreeItem(
     vscode.TreeItemCollapsibleState.Expanded,
   );
   changeGroupTreeItem.description = String(changeGroupNode.changes.length);
+  changeGroupTreeItem.id = createGitSidebarTreeItemId(
+    changeGroupNode.repository.rootUri.fsPath,
+    "change-group",
+    changeGroupNode.groupKind,
+  );
   changeGroupTreeItem.iconPath = new vscode.ThemeIcon(groupPresentation.icon);
   changeGroupTreeItem.contextValue = `gito.group.${changeGroupNode.groupKind}`;
   return changeGroupTreeItem;
@@ -134,6 +162,11 @@ function createChangeTreeItem(
   const relativeChangePath = relative(changeNode.repository.rootUri.fsPath, changeNode.change.uri.fsPath);
   const parentDirectory = dirname(relativeChangePath);
   const changeTreeItem = new vscode.TreeItem(basename(relativeChangePath));
+  changeTreeItem.id = createGitSidebarTreeItemId(
+    changeNode.repository.rootUri.fsPath,
+    "change",
+    `${changeNode.groupKind}:${changeNode.change.uri.toString()}`,
+  );
   changeTreeItem.description = `${parentDirectory === "." ? "" : parentDirectory} ${statusLabel(changeNode.change.status)}`.trim();
   changeTreeItem.resourceUri = changeNode.change.uri;
   changeTreeItem.contextValue = `gito.change.${changeNode.groupKind}`;
@@ -148,8 +181,9 @@ function createChangeTreeItem(
   return changeTreeItem;
 }
 
-function createCleanTreeItem(): vscode.TreeItem {
+function createCleanTreeItem(repository: GitRepository): vscode.TreeItem {
   const cleanTreeItem = new vscode.TreeItem("Working Tree Clean");
+  cleanTreeItem.id = createGitSidebarTreeItemId(repository.rootUri.fsPath, "working-tree-clean");
   cleanTreeItem.iconPath = new vscode.ThemeIcon("pass-filled", new vscode.ThemeColor("charts.green"));
   return cleanTreeItem;
 }

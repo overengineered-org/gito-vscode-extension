@@ -102,6 +102,27 @@ test("finds local branches missing from every remote without offering the curren
   );
 });
 
+test("matches differently named local branches through their configured upstream", () => {
+  const trackedLocalBranch = {
+    name: "deploy",
+    type: GitReferenceType.localBranch,
+    upstream: { name: "release/deploy", remote: "origin" },
+  };
+  const trackedRemoteBranch = {
+    name: "origin/release/deploy",
+    remote: "origin",
+    type: GitReferenceType.remoteBranch,
+  };
+
+  const branchInventory = buildBranchInventory([trackedLocalBranch, trackedRemoteBranch]);
+  assert.equal(branchInventory.localBranches[0]?.availableRemotely, true);
+  assert.equal(branchInventory.remoteTrackingBranches[0]?.availableLocally, true);
+  assert.deepEqual(
+    listPrunableLocalBranches([trackedLocalBranch, trackedRemoteBranch], undefined),
+    [],
+  );
+});
+
 test("separates switchable branches and tags", () => {
   const gitReferences = [
     { name: "main", type: GitReferenceType.localBranch },

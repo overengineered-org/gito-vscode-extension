@@ -2,7 +2,7 @@
   "name": "gito",
   "displayName": "Git'o",
   "description": "Work with local Git repositories, branches, and tags from a focused sidebar.",
-  "version": "0.8.9",
+  "version": "0.8.10",
   "publisher": "overengineered-org",
   "license": "MIT",
   "repository": {
@@ -67,6 +67,11 @@
     },
     "commands": [
       {
+        "command": "gito.compareRemoteTags",
+        "title": "Git'o: Compare Tags with Remote",
+        "icon": "$(sync)"
+      },
+      {
         "command": "gito.stageChange",
         "title": "Stage Change",
         "icon": "$(add)"
@@ -90,6 +95,11 @@
         "command": "gito.unstageGroup",
         "title": "Unstage All Changes",
         "icon": "$(remove)"
+      },
+      {
+        "command": "gito.toggleCommitDiffLayout",
+        "title": "Git'o: Toggle Unified / Side-by-Side Diff",
+        "icon": "$(layout)"
       }
     ],
     "menus": {
@@ -113,6 +123,17 @@
         {
           "command": "gito.unstageGroup",
           "when": "false"
+        },
+        {
+          "command": "gito.toggleCommitDiffLayout",
+          "when": "false"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "gito.toggleCommitDiffLayout",
+          "when": "activeEditor == multiDiffEditor",
+          "group": "navigation@10"
         }
       ],
       "view/item/context": [
@@ -152,13 +173,16 @@
   },
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.cjs",
-    "check": "npm run typecheck && npm test && npm run build",
+    "build:integration": "esbuild test/integration/suite.ts --bundle --platform=node --format=cjs --external:vscode --outfile=.integration-test/suite.cjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run test:integration",
     "test": "node --test test/*.test.ts",
+    "test:integration": "npm run build:integration && node test/runIntegration.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
     "@types/vscode": "^1.134.0",
+    "@vscode/test-electron": "^3.1.0",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
   }

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { completeGitOperationBeforeTimeout } from "./gitOperationTimeout.ts";
 import type { GitReference } from "./gitModel.ts";
 
 export interface GitChange {
@@ -44,9 +45,12 @@ export interface GitRepository {
     readonly onDidChange: vscode.Event<void>;
     readonly selected: boolean;
   };
+  add(resourceUris: readonly vscode.Uri[]): Promise<void>;
+  clean(resourceUris: readonly vscode.Uri[]): Promise<void>;
   getBranchBase(branchName: string): Promise<GitReference | undefined>;
   getRefs(query: GitReferenceQuery): Promise<readonly GitReference[]>;
   log(options?: GitLogOptions): Promise<readonly GitCommit[]>;
+  revert(resourceUris: readonly vscode.Uri[]): Promise<void>;
 }
 
 interface GitReferenceQuery {
@@ -62,6 +66,18 @@ export interface GitApi {
   readonly onDidCloseRepository: vscode.Event<GitRepository>;
   readonly onDidOpenRepository: vscode.Event<GitRepository>;
   readonly repositories: readonly GitRepository[];
+}
+
+export async function loadGitCommitsWithTimeout(
+  repository: GitRepository,
+  gitLogOptions: GitLogOptions,
+  timeoutMilliseconds = 15_000,
+): Promise<readonly GitCommit[]> {
+  return completeGitOperationBeforeTimeout(
+    repository.log(gitLogOptions),
+    timeoutMilliseconds,
+    "Git history",
+  );
 }
 
 interface BuiltInGitExtension {
