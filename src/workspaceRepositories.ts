@@ -1,7 +1,9 @@
 import * as vscode from "vscode";
+import { isAbsolute, relative } from "node:path";
 
 import type { GitApi, GitRepository } from "./gitApi.ts";
 import { isRepositoryInWorkspaceContext } from "./gitModel.ts";
+import { canonicalizePath, pathsIdentifySameLocation } from "./pathIdentity.ts";
 
 export class WorkspaceRepositories implements vscode.Disposable {
   private readonly changedEmitter = new vscode.EventEmitter<void>();
@@ -40,7 +42,24 @@ export class WorkspaceRepositories implements vscode.Disposable {
   }
 
   public findRepository(repositoryPath: string): GitRepository | undefined {
-    return this.repositories.find((repository) => repository.rootUri.fsPath === repositoryPath);
+    return this.repositories.find((repository) =>
+      pathsIdentifySameLocation(repository.rootUri.fsPath, repositoryPath),
+    );
+  }
+
+  public findRepositoryContaining(filePath: string): GitRepository | undefined {
+    return this.repositories
+      .filter((repository) => {
+        const relativeFilePath = relative(
+          canonicalizePath(repository.rootUri.fsPath),
+          canonicalizePath(filePath),
+        );
+        return relativeFilePath !== "" && !relativeFilePath.startsWith("..") && !isAbsolute(relativeFilePath);
+      })
+      .toSorted(
+        (firstRepository, secondRepository) =>
+          secondRepository.rootUri.fsPath.length - firstRepository.rootUri.fsPath.length,
+      )[0];
   }
 
   public selectRepository(repositoryPath: string): void {

@@ -11,9 +11,11 @@ export async function loadCommitGraphPage(
   repository: GitRepository,
   graphReferences: readonly GitReference[],
   entryLimit: number,
+  filePath?: string,
 ): Promise<CommitGraphPage> {
   const gitCommits = await loadGitCommitsWithTimeout(repository, {
     maxEntries: entryLimit + 1,
+    ...(filePath === undefined ? {} : { path: filePath }),
   });
   return {
     hasMore: gitCommits.length > entryLimit,

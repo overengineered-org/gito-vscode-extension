@@ -2,8 +2,14 @@ import { homedir } from "node:os";
 
 import * as vscode from "vscode";
 
-import type { GitRepository, GitWorktree } from "./gitApi.ts";
+import type { GitApi, GitRepository, GitWorktree } from "./gitApi.ts";
 import { createWorktreeCheckoutPath } from "./worktreeModel.ts";
+import { listRepositoryWorktrees } from "./worktreeDiscovery.ts";
+import { canonicalizePath } from "./pathIdentity.ts";
+import {
+  loadWorktreeWipSummary,
+  type WorktreeWipSummary,
+} from "./worktreeStatus.ts";
 
 const worktreeLabelsStorageKey = "gito.worktreeLabels";
 
@@ -13,10 +19,12 @@ interface WorktreeLabels {
 
 export class Worktrees implements vscode.Disposable {
   private readonly changedEmitter = new vscode.EventEmitter<void>();
+  private readonly wipSummaryByPath = new Map<string, WorktreeWipSummary>();
 
   public readonly onDidChange = this.changedEmitter.event;
 
   public constructor(
+    private readonly gitApi: GitApi,
     private readonly globalState: vscode.Memento,
     private readonly diagnostics: vscode.LogOutputChannel,
   ) {}
@@ -27,8 +35,64 @@ export class Worktrees implements vscode.Disposable {
 
   public getDisplayName(worktree: GitWorktree): string {
     return (
-      this.globalState.get<WorktreeLabels>(worktreeLabelsStorageKey, {})[worktree.path] ??
+      this.globalState.get<WorktreeLabels>(worktreeLabelsStorageKey, {})[
+        canonicalizePath(worktree.path)
+      ] ??
       worktree.name
+    );
+  }
+
+  public getWipSummary(worktreePath: string): WorktreeWipSummary | undefined {
+    return this.wipSummaryByPath.get(worktreePath);
+  }
+
+  public async refreshRepositoryWorktrees(
+    repository: GitRepository,
+  ): Promise<readonly GitWorktree[]> {
+    let repositoryWorktrees: readonly GitWorktree[];
+    try {
+      repositoryWorktrees = await listRepositoryWorktrees({
+        environment: this.gitApi.git.env,
+        executablePath: this.gitApi.git.path,
+        repositoryPath: repository.rootUri.fsPath,
+      });
+    } catch (worktreeDiscoveryFailure) {
+      this.diagnostics.warn(
+        `Worktree discovery failed for '${repository.rootUri.fsPath}'.`,
+        worktreeDiscoveryFailure,
+      );
+      repositoryWorktrees = repository.state.worktrees;
+    }
+    await this.refreshWipSummaries(repositoryWorktrees);
+    return repositoryWorktrees;
+  }
+
+  public async refreshWipSummaries(worktrees: readonly GitWorktree[]): Promise<void> {
+    const currentWorktreePaths = new Set(worktrees.map((worktree) => worktree.path));
+    for (const cachedWorktreePath of this.wipSummaryByPath.keys()) {
+      if (!currentWorktreePaths.has(cachedWorktreePath)) {
+        this.wipSummaryByPath.delete(cachedWorktreePath);
+      }
+    }
+    await Promise.all(
+      worktrees.map(async (worktree) => {
+        try {
+          this.wipSummaryByPath.set(
+            worktree.path,
+            await loadWorktreeWipSummary({
+              environment: this.gitApi.git.env,
+              executablePath: this.gitApi.git.path,
+              repositoryPath: worktree.path,
+            }),
+          );
+        } catch (worktreeStatusFailure) {
+          this.wipSummaryByPath.delete(worktree.path);
+          this.diagnostics.warn(
+            `Worktree status failed for '${worktree.path}'.`,
+            worktreeStatusFailure,
+          );
+        }
+      }),
     );
   }
 
@@ -90,9 +154,10 @@ export class Worktrees implements vscode.Disposable {
       .get("storageRoot", "");
     let worktreePath: string;
     try {
+      const repositoryWorktrees = await this.refreshRepositoryWorktrees(repository);
       worktreePath = createWorktreeCheckoutPath(
         repository.rootUri.fsPath,
-        repository.state.worktrees,
+        repositoryWorktrees,
         configuredStorageRoot,
         displayName,
         homedir(),
@@ -118,8 +183,18 @@ export class Worktrees implements vscode.Disposable {
             path: worktreePath,
           }),
       );
-      await this.setDisplayName(createdWorktreePath, displayName);
-      return createdWorktreePath;
+      const canonicalWorktreePath = canonicalizePath(createdWorktreePath);
+      await this.setDisplayName(canonicalWorktreePath, displayName);
+      try {
+        await repository.status();
+      } catch (worktreeRefreshFailure) {
+        this.diagnostics.warn(
+          `Worktree created but repository refresh failed for '${createdWorktreePath}'.`,
+          worktreeRefreshFailure,
+        );
+      }
+      await this.refreshRepositoryWorktrees(repository);
+      return canonicalWorktreePath;
     } catch (worktreeCreationFailure) {
       this.diagnostics.error("Worktree creation failed.", worktreeCreationFailure);
       void vscode.window.showErrorMessage(
@@ -149,9 +224,10 @@ export class Worktrees implements vscode.Disposable {
       throw new Error("Git'o worktree names cannot be empty.");
     }
     const worktreeLabels = this.globalState.get<WorktreeLabels>(worktreeLabelsStorageKey, {});
+    const canonicalWorktreePath = canonicalizePath(worktreePath);
     await this.globalState.update(worktreeLabelsStorageKey, {
       ...worktreeLabels,
-      [worktreePath]: trimmedDisplayName,
+      [canonicalWorktreePath]: trimmedDisplayName,
     });
     this.changedEmitter.fire();
   }
@@ -159,7 +235,7 @@ export class Worktrees implements vscode.Disposable {
   public async openWorktree(worktreePath: string, openInNewWindow: boolean): Promise<void> {
     await vscode.commands.executeCommand(
       "vscode.openFolder",
-      vscode.Uri.file(worktreePath),
+      vscode.Uri.file(canonicalizePath(worktreePath)),
       openInNewWindow,
     );
   }

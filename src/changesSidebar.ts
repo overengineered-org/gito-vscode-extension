@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 
 import type { GitChange, GitRepository } from "./gitApi.ts";
 import { createGitSidebarTreeItemId } from "./gitSidebarIdentity.ts";
+import { gitThemeColorIds } from "./gitTheme.ts";
 import type { WorkspaceRepositories } from "./workspaceRepositories.ts";
 
 type ChangeGroupKind = "conflicts" | "staged" | "unstaged";
@@ -18,6 +19,8 @@ export type ChangesSidebarNode =
     }
   | {
       readonly change: GitChange;
+      readonly changeCount: number;
+      readonly changePosition: number;
       readonly groupKind: ChangeGroupKind;
       readonly nodeType: "change";
       readonly repository: GitRepository;
@@ -45,8 +48,10 @@ export class ChangesSidebar
 
   public getChildren(parentNode?: ChangesSidebarNode): ChangesSidebarNode[] {
     if (parentNode?.nodeType === "group") {
-      return parentNode.changes.map((change) => ({
+      return parentNode.changes.map((change, changeIndex) => ({
         change,
+        changeCount: parentNode.changes.length,
+        changePosition: changeIndex + 1,
         groupKind: parentNode.groupKind,
         nodeType: "change",
         repository: parentNode.repository,
@@ -85,11 +90,11 @@ export class ChangesSidebar
       return;
     }
     if (changeAction === "stage") {
-      await sidebarNode.repository.add([sidebarNode.change.uri]);
+      await sidebarNode.repository.add([sidebarNode.change.uri.fsPath]);
       return;
     }
     if (changeAction === "unstage") {
-      await sidebarNode.repository.revert([sidebarNode.change.uri]);
+      await sidebarNode.repository.revert([sidebarNode.change.uri.fsPath]);
       return;
     }
     const discardConfirmation = await vscode.window.showWarningMessage(
@@ -98,7 +103,7 @@ export class ChangesSidebar
       "Discard Changes",
     );
     if (discardConfirmation === "Discard Changes") {
-      await sidebarNode.repository.clean([sidebarNode.change.uri]);
+      await sidebarNode.repository.clean([sidebarNode.change.uri.fsPath]);
     }
   }
 
@@ -107,10 +112,10 @@ export class ChangesSidebar
     sidebarNode: ChangesSidebarNode | undefined,
   ): Promise<void> {
     if (sidebarNode?.nodeType === "group") {
-      const changeUris = sidebarNode.changes.map((change) => change.uri);
+      const changePaths = sidebarNode.changes.map((change) => change.uri.fsPath);
       await (changeAction === "stage"
-        ? sidebarNode.repository.add(changeUris)
-        : sidebarNode.repository.revert(changeUris));
+        ? sidebarNode.repository.add(changePaths)
+        : sidebarNode.repository.revert(changePaths));
     }
   }
 }
@@ -137,7 +142,7 @@ function createChangeGroupTreeItem(
   changeGroupNode: Extract<ChangesSidebarNode, { readonly nodeType: "group" }>,
 ): vscode.TreeItem {
   const groupPresentation = {
-    conflicts: { icon: "warning", label: "Conflicts" },
+    conflicts: { icon: "warning", label: "Resolve Conflicts" },
     staged: { icon: "pass-filled", label: "Staged Changes" },
     unstaged: { icon: "diff", label: "Changes" },
   }[changeGroupNode.groupKind];
@@ -167,14 +172,25 @@ function createChangeTreeItem(
     "change",
     `${changeNode.groupKind}:${changeNode.change.uri.toString()}`,
   );
-  changeTreeItem.description = `${parentDirectory === "." ? "" : parentDirectory} ${statusLabel(changeNode.change.status)}`.trim();
+  const changeStatus =
+    changeNode.groupKind === "conflicts"
+      ? "Needs your choice"
+      : statusLabel(changeNode.change.status);
+  changeTreeItem.description = `${parentDirectory === "." ? "" : parentDirectory} ${changeStatus}`.trim();
   changeTreeItem.resourceUri = changeNode.change.uri;
   changeTreeItem.contextValue = `gito.change.${changeNode.groupKind}`;
-  changeTreeItem.command = {
-    arguments: [changeNode.change.uri],
-    command: "git.openChange",
-    title: `Open ${relativeChangePath}`,
-  };
+  changeTreeItem.command =
+    changeNode.groupKind === "conflicts"
+      ? {
+          arguments: [changeNode],
+          command: "gito.resolveConflict",
+          title: `Resolve ${relativeChangePath}`,
+        }
+      : {
+          arguments: [changeNode.change.uri],
+          command: "git.openChange",
+          title: `Open ${relativeChangePath}`,
+        };
   changeTreeItem.tooltip = new vscode.MarkdownString(
     `**${relativeChangePath}**\n\n${statusName(changeNode.change.status)}`,
   );
@@ -184,7 +200,10 @@ function createChangeTreeItem(
 function createCleanTreeItem(repository: GitRepository): vscode.TreeItem {
   const cleanTreeItem = new vscode.TreeItem("Working Tree Clean");
   cleanTreeItem.id = createGitSidebarTreeItemId(repository.rootUri.fsPath, "working-tree-clean");
-  cleanTreeItem.iconPath = new vscode.ThemeIcon("pass-filled", new vscode.ThemeColor("charts.green"));
+  cleanTreeItem.iconPath = new vscode.ThemeIcon(
+    "pass-filled",
+    new vscode.ThemeColor(gitThemeColorIds.clean),
+  );
   return cleanTreeItem;
 }
 
@@ -235,11 +254,11 @@ const statusNames = [
   "Intent to add",
   "Intent to rename",
   "Type changed",
-  "Added by us",
-  "Added by them",
-  "Deleted by us",
-  "Deleted by them",
-  "Added by both",
-  "Deleted by both",
-  "Modified by both",
+  "Added on one side",
+  "Added on one side",
+  "Deleted on one side",
+  "Deleted on one side",
+  "Both sides added this file",
+  "Both sides deleted this file",
+  "Both sides changed this file",
 ] as const;

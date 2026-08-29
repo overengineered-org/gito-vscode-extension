@@ -1,4 +1,5 @@
 import type { GitCommit } from "./gitApi.ts";
+import type { FileChangeStats } from "./graphSearch.ts";
 import { type GitReference, GitReferenceType } from "./gitModel.ts";
 
 export interface GraphConnection {
@@ -14,8 +15,10 @@ export interface GraphReferenceLabel {
 }
 
 export interface CommitGraphRow {
+  readonly additions?: number;
   readonly authorName: string;
   readonly committedAt?: number;
+  readonly deletions?: number;
   readonly connections: readonly GraphConnection[];
   readonly hash: string;
   readonly hiddenLaneCount: number;
@@ -31,6 +34,7 @@ export interface CommitGraphRow {
 export function buildCommitGraphRows(
   gitCommits: readonly GitCommit[],
   gitReferences: readonly GitReference[],
+  changeStatsByCommitHash: ReadonlyMap<string, FileChangeStats> = new Map(),
 ): readonly CommitGraphRow[] {
   const referenceLabelsByCommit = mapReferenceLabelsByCommit(gitReferences);
   let activeCommitHashes: string[] = [];
@@ -81,6 +85,7 @@ export function buildCommitGraphRows(
     });
     activeCommitHashes = activeCommitHashesAfter;
     const committedAt = gitCommit.commitDate ?? gitCommit.authorDate;
+    const fileChangeStats = changeStatsByCommitHash.get(gitCommit.hash);
     const fullLaneCount = Math.max(
       activeCommitHashesBefore.length,
       activeCommitHashesAfter.length,
@@ -89,12 +94,14 @@ export function buildCommitGraphRows(
 
     return {
       authorName: gitCommit.authorName ?? "Unknown author",
+      ...(fileChangeStats === undefined ? {} : { additions: fileChangeStats.additions }),
       ...(committedAt === undefined ? {} : { committedAt: committedAt.getTime() }),
       connections: [...continuationConnections, ...parentConnections].filter(
         (connection) =>
           connection.fromLane < maximumVisibleLaneCount &&
           connection.toLane < maximumVisibleLaneCount,
       ),
+      ...(fileChangeStats === undefined ? {} : { deletions: fileChangeStats.deletions }),
       hash: gitCommit.hash,
       hiddenLaneCount: Math.max(0, fullLaneCount - maximumVisibleLaneCount),
       laneCount: Math.min(fullLaneCount, maximumVisibleLaneCount),

@@ -1,6 +1,7 @@
 import { basename, dirname, isAbsolute, join, normalize } from "node:path";
 
 import type { GitWorktree } from "./gitApi.ts";
+import { canonicalizePath } from "./pathIdentity.ts";
 
 export interface RepositoryFamilyCandidate {
   readonly repositoryPath: string;
@@ -26,7 +27,7 @@ export function createRepositoryFamilyKey(
   repositoryPath: string,
   worktrees: readonly GitWorktree[],
 ): string {
-  return normalize(findPrimaryWorktree(repositoryPath, worktrees).path);
+  return canonicalizePath(findPrimaryWorktree(repositoryPath, worktrees).path);
 }
 
 export function selectRepositoryFamilyRepresentatives(
@@ -56,7 +57,9 @@ export function createWorktreeCheckoutPath(
   worktreeDisplayName: string,
   userHomePath: string,
 ): string {
-  const primaryWorktreePath = findPrimaryWorktree(repositoryPath, worktrees).path;
+  const primaryWorktreePath = canonicalizePath(
+    findPrimaryWorktree(repositoryPath, worktrees).path,
+  );
   const storageRoot = resolveWorktreeStorageRoot(
     primaryWorktreePath,
     configuredStorageRoot,

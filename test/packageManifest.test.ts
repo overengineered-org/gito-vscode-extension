@@ -62,7 +62,12 @@ test("ships one desktop path backed by VS Code Git", () => {
       "gito.discardChange",
       "gito.stageGroup",
       "gito.unstageGroup",
+      "gito.resolveConflict",
       "gito.toggleCommitDiffLayout",
+      "gito.showFileHistory",
+      "gito.showCurrentLineBlame",
+      "gito.refreshGit",
+      "gito.toggleInlineBlame",
       "gito.createWorktree",
       "gito.openWorktreeInCurrentWindow",
       "gito.openWorktreeInNewWindow",
@@ -75,12 +80,31 @@ test("ships one desktop path backed by VS Code Git", () => {
       group: "navigation@10",
       when: "activeEditor == multiDiffEditor",
     },
+    {
+      command: "gito.showFileHistory",
+      group: "navigation@20",
+      when: "resourceScheme == file && activeEditor != multiDiffEditor",
+    },
+  ]);
+  assert.deepEqual(extensionManifest.contributes.menus?.["explorer/context"], [
+    {
+      command: "gito.showFileHistory",
+      group: "navigation@20",
+      when: "resourceScheme == file",
+    },
+  ]);
+  assert.deepEqual(extensionManifest.contributes.menus?.["view/title"], [
+    {
+      command: "gito.refreshGit",
+      group: "navigation@1",
+      when: "view == gito.git",
+    },
   ]);
   assert.deepEqual(extensionManifest.contributes.menus?.["view/item/context"], [
     {
       command: "gito.stageChange",
       group: "inline",
-      when: "view == gito.changes && (viewItem == gito.change.unstaged || viewItem == gito.change.conflicts)",
+      when: "view == gito.changes && viewItem == gito.change.unstaged",
     },
     {
       command: "gito.unstageChange",
@@ -95,7 +119,12 @@ test("ships one desktop path backed by VS Code Git", () => {
     {
       command: "gito.stageGroup",
       group: "inline",
-      when: "view == gito.changes && (viewItem == gito.group.unstaged || viewItem == gito.group.conflicts)",
+      when: "view == gito.changes && viewItem == gito.group.unstaged",
+    },
+    {
+      command: "gito.resolveConflict",
+      group: "inline",
+      when: "view == gito.changes && viewItem == gito.change.conflicts",
     },
     {
       command: "gito.unstageGroup",
@@ -129,6 +158,26 @@ test("ships one desktop path backed by VS Code Git", () => {
         "Absolute folder for linked worktrees. `~` is supported. Empty stores them beside the primary repository under `.gito-worktrees/<repository>/`.",
       scope: "machine",
       type: "string",
+    },
+  );
+  assert.deepEqual(
+    extensionManifest.contributes.configuration?.properties["gito.blame.inlineEnabled"],
+    {
+      default: true,
+      markdownDescription:
+        "Show subtle author, age, and commit summary text after the active line.",
+      scope: "window",
+      type: "boolean",
+    },
+  );
+  assert.deepEqual(
+    extensionManifest.contributes.configuration?.properties["gito.blame.enabled"],
+    {
+      default: true,
+      markdownDescription:
+        "Show native current-line authorship in the status bar. No repository data leaves your machine.",
+      scope: "window",
+      type: "boolean",
     },
   );
   assert.deepEqual(extensionManifest.contributes.views.gito, [

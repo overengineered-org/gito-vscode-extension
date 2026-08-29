@@ -29,6 +29,9 @@ import {
   selectRepositoryFamilyRepresentatives,
 } from "./worktreeModel.ts";
 import type { Worktrees } from "./worktrees.ts";
+import { formatWorktreeWipSummary } from "./worktreeStatus.ts";
+import { gitThemeColorIds } from "./gitTheme.ts";
+import { pathsIdentifySameLocation } from "./pathIdentity.ts";
 
 interface RemoteTagSnapshot {
   readonly remoteName: string;
@@ -101,6 +104,7 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
   private readonly remoteTagSnapshots = new Map<string, RemoteTagSnapshot>();
   private readonly worktreeSubscription: vscode.Disposable;
   private readonly workspaceRepositorySubscription: vscode.Disposable;
+  private readonly windowFocusSubscription: vscode.Disposable;
   private readonly treeChangedEmitter = new vscode.EventEmitter<GitSidebarNode | undefined>();
   private scheduledRefresh: ReturnType<typeof setTimeout> | undefined;
   private workspaceStateVersion = 0;
@@ -117,11 +121,15 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
       this.scheduleRefresh(),
     );
     this.worktreeSubscription = worktrees.onDidChange(() => this.refresh());
+    this.windowFocusSubscription = vscode.window.onDidChangeWindowState((windowState) => {
+      if (windowState.focused) this.scheduleRefresh();
+    });
   }
 
   public dispose(): void {
     this.workspaceRepositorySubscription.dispose();
     this.worktreeSubscription.dispose();
+    this.windowFocusSubscription.dispose();
     if (this.scheduledRefresh !== undefined) {
       clearTimeout(this.scheduledRefresh);
     }
@@ -139,9 +147,12 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
       case "repository":
         return createRepositoryChildren(parentNode.repository);
       case "worktreeGroup":
+        const repositoryWorktrees = await this.worktrees.refreshRepositoryWorktrees(
+          parentNode.repository,
+        );
         return [
           { nodeType: "createWorktree", repository: parentNode.repository },
-          ...parentNode.repository.state.worktrees.map(
+          ...repositoryWorktrees.map(
             (worktree): GitSidebarNode => ({
               nodeType: "worktree",
               repository: parentNode.repository,
@@ -636,7 +647,7 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
     ];
   }
 
-  private refresh(): void {
+  public refresh(): void {
     this.workspaceStateVersion += 1;
     const workspaceRepositoryPaths = new Set(
       this.getWorkspaceRepositories().map((repository) => repository.rootUri.fsPath),
@@ -772,9 +783,14 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
   ): vscode.TreeItem {
     const { repository, worktree } = worktreeNode;
     const worktreeDisplayName = this.worktrees.getDisplayName(worktree);
-    const isCurrentWorktree =
-      vscode.Uri.file(worktree.path).fsPath === vscode.Uri.file(repository.rootUri.fsPath).fsPath;
+    const isCurrentWorktree = pathsIdentifySameLocation(
+      worktree.path,
+      repository.rootUri.fsPath,
+    );
     const branchName = formatWorktreeBranchName(worktree);
+    const worktreeWipSummary = this.worktrees.getWipSummary(worktree.path);
+    const formattedWipSummary =
+      worktreeWipSummary === undefined ? "Status unavailable" : formatWorktreeWipSummary(worktreeWipSummary);
     const worktreeTreeItem = new vscode.TreeItem(worktreeDisplayName);
     worktreeTreeItem.id = createGitSidebarTreeItemId(
       createRepositoryFamilyKey(repository.rootUri.fsPath, repository.state.worktrees),
@@ -788,18 +804,28 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
       isCurrentWorktree ? "Current" : undefined,
       branchName,
       worktree.main ? "Primary" : undefined,
+      formattedWipSummary,
     ]
       .filter((worktreeDetail): worktreeDetail is string => worktreeDetail !== undefined)
       .join(" · ");
+    const worktreeColor = worktreeWipSummary === undefined
+      ? isCurrentWorktree ? new vscode.ThemeColor(gitThemeColorIds.clean) : undefined
+      : worktreeWipSummary.conflictCount > 0
+        ? new vscode.ThemeColor(gitThemeColorIds.conflict)
+        : formattedWipSummary !== "Clean"
+          ? new vscode.ThemeColor(gitThemeColorIds.wip)
+          : isCurrentWorktree
+            ? new vscode.ThemeColor(gitThemeColorIds.clean)
+            : undefined;
     worktreeTreeItem.iconPath = new vscode.ThemeIcon(
       worktree.main ? "repo" : "repo-forked",
-      isCurrentWorktree ? new vscode.ThemeColor("charts.green") : undefined,
+      worktreeColor,
     );
     worktreeTreeItem.tooltip = new vscode.MarkdownString(
-      `**${branchName}**\n\n${worktree.main ? "Primary worktree" : "Linked worktree"}\n\n${worktree.path}`,
+      `**${branchName}**\n\n${formattedWipSummary}\n\n${worktree.main ? "Primary worktree" : "Linked worktree"}\n\n${worktree.path}`,
     );
     worktreeTreeItem.accessibilityInformation = {
-      label: `${worktreeDisplayName}, ${branchName}, ${isCurrentWorktree ? "current" : "available"} worktree`,
+      label: `${worktreeDisplayName}, ${branchName}, ${isCurrentWorktree ? "current" : "available"} worktree, ${formattedWipSummary}`,
     };
     if (!isCurrentWorktree) {
       worktreeTreeItem.command = {
@@ -952,7 +978,9 @@ function createBranchCollectionTreeItem(
       ? new vscode.ThemeIcon(isLocalCollection ? "device-desktop" : "cloud")
       : new vscode.ThemeIcon(
           isLocalCollection ? "device-desktop" : "cloud",
-          new vscode.ThemeColor(isLocalCollection ? "charts.yellow" : "charts.blue"),
+          new vscode.ThemeColor(
+            isLocalCollection ? gitThemeColorIds.localOnly : gitThemeColorIds.remoteOnly,
+          ),
         );
   branchCollectionTreeItem.tooltip = isLocalCollection
     ? "Branches available locally"
@@ -980,7 +1008,7 @@ function createBranchLagTreeItem(
     branchLagNotice.comparisonKind === "source" ? "Source branch" : "Upstream";
   branchLagTreeItem.iconPath = new vscode.ThemeIcon(
     "warning",
-    new vscode.ThemeColor("charts.yellow"),
+    new vscode.ThemeColor(gitThemeColorIds.behind),
   );
   branchLagTreeItem.tooltip =
     branchLagNotice.comparisonKind === "source"
@@ -1029,28 +1057,28 @@ function createTagPresentation(
   switch (tagAvailability.syncStatus) {
     case "synced":
       return {
-        colorId: "charts.green",
+        colorId: gitThemeColorIds.clean,
         description: `Synced with ${comparedRemoteName}`,
         iconId: "check",
         tooltip: `Available locally and on ${comparedRemoteName}.`,
       };
     case "localOnly":
       return {
-        colorId: "charts.yellow",
+        colorId: gitThemeColorIds.localOnly,
         description: "Local only · not pushed",
         iconId: "cloud-upload",
         tooltip: `Local only. Not pushed to ${comparedRemoteName}.`,
       };
     case "remoteOnly":
       return {
-        colorId: "charts.blue",
+        colorId: gitThemeColorIds.remoteOnly,
         description: `${comparedRemoteName} only · not fetched`,
         iconId: "cloud-download",
         tooltip: `Available on ${comparedRemoteName}. Not fetched locally.`,
       };
     case "conflict":
       return {
-        colorId: "charts.red",
+        colorId: gitThemeColorIds.conflict,
         description: "Conflict · same name, different commit",
         iconId: "warning",
         tooltip: `This tag name points to different commits locally and on ${comparedRemoteName}.`,

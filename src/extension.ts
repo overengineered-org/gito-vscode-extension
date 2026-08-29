@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 
 import { ChangesSidebar, type ChangesSidebarNode } from "./changesSidebar.ts";
 import { CommitView } from "./commitView.ts";
+import { ConflictGuide } from "./conflictGuide.ts";
+import { CurrentLineBlame } from "./currentLineBlame.ts";
 import { loadBuiltInGitApi } from "./gitApi.ts";
 import { GitSidebar, type GitSidebarNode } from "./gitSidebar.ts";
 import { GraphView } from "./graphView.ts";
@@ -12,7 +14,13 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
   const builtInGitApi = await loadBuiltInGitApi();
   const diagnostics = vscode.window.createOutputChannel("Git'o", { log: true });
   const workspaceRepositories = new WorkspaceRepositories(builtInGitApi);
-  const worktrees = new Worktrees(extensionContext.globalState, diagnostics);
+  const worktrees = new Worktrees(builtInGitApi, extensionContext.globalState, diagnostics);
+  const conflictGuide = new ConflictGuide(diagnostics);
+  const currentLineBlame = new CurrentLineBlame(
+    builtInGitApi,
+    workspaceRepositories,
+    diagnostics,
+  );
   const gitSidebar = new GitSidebar(
     builtInGitApi,
     workspaceRepositories,
@@ -21,7 +29,7 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
   );
   const commitView = new CommitView(workspaceRepositories, diagnostics);
   const changesSidebar = new ChangesSidebar(workspaceRepositories);
-  const graphView = new GraphView(workspaceRepositories, diagnostics);
+  const graphView = new GraphView(builtInGitApi, workspaceRepositories, diagnostics);
   extensionContext.subscriptions.push(
     workspaceRepositories,
     worktrees,
@@ -29,6 +37,7 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
     gitSidebar,
     commitView,
     changesSidebar,
+    currentLineBlame,
     graphView,
     vscode.window.registerTreeDataProvider("gito.git", gitSidebar),
     vscode.window.registerWebviewViewProvider("gito.commit", commitView, {
@@ -53,9 +62,29 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
     vscode.commands.registerCommand("gito.unstageGroup", (sidebarNode?: ChangesSidebarNode) =>
       changesSidebar.runGroupAction("unstage", sidebarNode),
     ),
+    vscode.commands.registerCommand("gito.resolveConflict", (sidebarNode?: ChangesSidebarNode) =>
+      sidebarNode?.nodeType === "change" && sidebarNode.groupKind === "conflicts"
+        ? conflictGuide.open(
+            sidebarNode.repository,
+            sidebarNode.change.uri,
+            sidebarNode.changePosition,
+            sidebarNode.changeCount,
+          )
+        : undefined,
+    ),
     vscode.commands.registerCommand("gito.toggleCommitDiffLayout", () =>
       vscode.commands.executeCommand("toggle.diff.renderSideBySide"),
     ),
+    vscode.commands.registerCommand("gito.showFileHistory", (fileUri?: vscode.Uri) =>
+      graphView.showFileHistory(fileUri),
+    ),
+    vscode.commands.registerCommand("gito.showCurrentLineBlame", () =>
+      currentLineBlame.showDetails(),
+    ),
+    vscode.commands.registerCommand("gito.toggleInlineBlame", () =>
+      currentLineBlame.toggleInlineAnnotation(),
+    ),
+    vscode.commands.registerCommand("gito.refreshGit", () => gitSidebar.refresh()),
     vscode.commands.registerCommand("gito.createWorktree", (repositoryRootUri?: vscode.Uri) => {
       const repository =
         repositoryRootUri === undefined

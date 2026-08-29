@@ -1,16 +1,20 @@
 import { randomBytes } from "node:crypto";
+import { relative } from "node:path";
 
 import * as vscode from "vscode";
 
 import { CoalescedAsyncRunner } from "./coalescedAsyncRunner.ts";
-import type { GitRepository } from "./gitApi.ts";
+import type { GitApi, GitRepository } from "./gitApi.ts";
 import { loadCommitGraphPage } from "./graphHistory.ts";
+import { searchCommitHistory } from "./graphSearch.ts";
 import type { GitReference } from "./gitModel.ts";
+import { buildCommitGraphRows } from "./graphModel.ts";
 import type { WorkspaceRepositories } from "./workspaceRepositories.ts";
 
 interface GraphViewMessage {
   readonly commitHash?: string;
   readonly repositoryPath?: string;
+  readonly searchText?: string;
   readonly type?: string;
 }
 
@@ -21,15 +25,20 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
   private readonly changedSubscription: vscode.Disposable;
   private readonly refreshRunner: CoalescedAsyncRunner;
   private graphEntryLimit = graphPageSize;
+  private fileHistoryPath: string | undefined;
+  private fileHistoryRepositoryPath: string | undefined;
   private lastGraphSourceKey: string | undefined;
   private lastRepositoryPath: string | undefined;
   private resolvedViewSubscriptions: vscode.Disposable | undefined;
+  private searchText = "";
+  private graphRequestVersion = 0;
   private refreshRequired = false;
   private scheduledRefresh: ReturnType<typeof setTimeout> | undefined;
   private webviewReady = false;
   private webviewView: vscode.WebviewView | undefined;
 
   public constructor(
+    private readonly gitApi: GitApi,
     private readonly workspaceRepositories: WorkspaceRepositories,
     private readonly diagnostics: vscode.LogOutputChannel,
   ) {
@@ -37,6 +46,28 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
       this.refresh(forceRefresh),
     );
     this.changedSubscription = workspaceRepositories.onDidChange(() => this.scheduleRefresh());
+  }
+
+  public async showFileHistory(fileUri?: vscode.Uri): Promise<void> {
+    const targetFileUri = fileUri ?? vscode.window.activeTextEditor?.document.uri;
+    if (targetFileUri?.scheme !== "file") {
+      void vscode.window.showInformationMessage("Git'o: Open a repository file first.");
+      return;
+    }
+    const targetRepository = this.workspaceRepositories.findRepositoryContaining(targetFileUri.fsPath);
+    if (targetRepository === undefined) {
+      void vscode.window.showInformationMessage("Git'o: This file is not inside an opened Git repository.");
+      return;
+    }
+    this.workspaceRepositories.selectRepository(targetRepository.rootUri.fsPath);
+    this.fileHistoryPath = relative(targetRepository.rootUri.fsPath, targetFileUri.fsPath);
+    this.fileHistoryRepositoryPath = targetRepository.rootUri.fsPath;
+    this.searchText = "";
+    this.graphEntryLimit = graphPageSize;
+    this.graphRequestVersion += 1;
+    this.lastGraphSourceKey = undefined;
+    await vscode.commands.executeCommand("gito.graph.focus");
+    this.scheduleRefresh(0, true);
   }
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -98,6 +129,21 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
       this.scheduleRefresh(0, true);
       return;
     }
+    if (graphViewMessage.type === "search" && typeof graphViewMessage.searchText === "string") {
+      this.searchText = graphViewMessage.searchText.trim();
+      this.graphEntryLimit = graphPageSize;
+      this.graphRequestVersion += 1;
+      this.scheduleRefresh(0, true);
+      return;
+    }
+    if (graphViewMessage.type === "clearFileHistory") {
+      this.fileHistoryPath = undefined;
+      this.fileHistoryRepositoryPath = undefined;
+      this.graphEntryLimit = graphPageSize;
+      this.graphRequestVersion += 1;
+      this.scheduleRefresh(0, true);
+      return;
+    }
     if (
       graphViewMessage.type === "openCommit" &&
       typeof graphViewMessage.commitHash === "string" &&
@@ -154,7 +200,14 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
       this.lastRepositoryPath = selectedRepository.rootUri.fsPath;
       this.graphEntryLimit = graphPageSize;
       forceRefresh = true;
+      if (this.fileHistoryRepositoryPath !== selectedRepository.rootUri.fsPath) {
+        this.fileHistoryPath = undefined;
+        this.fileHistoryRepositoryPath = undefined;
+      }
+      this.searchText = "";
+      this.graphRequestVersion += 1;
     }
+    const refreshRequestVersion = this.graphRequestVersion;
     if (selectedRepository.state.HEAD?.commit === undefined) {
       this.lastGraphSourceKey = undefined;
       void this.webviewView?.webview.postMessage({
@@ -182,6 +235,8 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
         selectedRepository,
         this.graphEntryLimit,
         allGraphReferences,
+        this.fileHistoryPath,
+        this.searchText,
       );
       if (!forceRefresh && graphSourceKey === this.lastGraphSourceKey) {
         return;
@@ -190,14 +245,35 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
       this.diagnostics.debug(
         `Loading Git history from HEAD for ${selectedRepository.rootUri.fsPath}.`,
       );
-      const commitGraphPage = await loadCommitGraphPage(
-        selectedRepository,
-        allGraphReferences,
-        this.graphEntryLimit,
-      );
+      const commitGraphPage = this.searchText === "" && this.fileHistoryPath === undefined
+        ? await loadCommitGraphPage(
+            selectedRepository,
+            allGraphReferences,
+            this.graphEntryLimit,
+            this.fileHistoryPath,
+          )
+        : await searchCommitHistory(
+            {
+              environment: this.gitApi.git.env,
+              executablePath: this.gitApi.git.path,
+              repositoryPath: selectedRepository.rootUri.fsPath,
+            },
+            allGraphReferences,
+            this.searchText,
+            this.fileHistoryPath,
+            this.graphEntryLimit,
+          ).then((searchPage) => ({
+            hasMore: searchPage.hasMore,
+            rows: buildCommitGraphRows(
+              searchPage.commits,
+              allGraphReferences,
+              searchPage.changeStatsByCommitHash,
+            ),
+          }));
       if (
         this.workspaceRepositories.selectedRepository?.rootUri.fsPath !==
-        selectedRepository.rootUri.fsPath
+          selectedRepository.rootUri.fsPath ||
+        this.graphRequestVersion !== refreshRequestVersion
       ) {
         return;
       }
@@ -211,6 +287,8 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
           selectedRepository.rootUri.path.split("/").filter(Boolean).at(-1) ??
           selectedRepository.rootUri.fsPath,
         repositoryPath: selectedRepository.rootUri.fsPath,
+        fileHistoryPath: this.fileHistoryPath,
+        searchText: this.searchText,
         rows: commitGraphPage.rows,
         type: "state",
       });
@@ -224,7 +302,11 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
         selectedRepository.rootUri.fsPath
       ) {
         void this.webviewView?.webview.postMessage({
-          message: "Git history could not be loaded.",
+          message:
+            graphFailure instanceof Error &&
+            graphFailure.message === "File history paths must stay inside the selected repository."
+              ? graphFailure.message
+              : "Git history could not be loaded.",
           type: "error",
         });
       }
@@ -236,12 +318,14 @@ function createGraphSourceKey(
   repository: GitRepository,
   graphEntryLimit: number,
   graphReferences: readonly GitReference[],
+  fileHistoryPath: string | undefined,
+  searchText: string,
 ): string {
   const referenceFingerprint = graphReferences
     .map((gitReference) => `${gitReference.type}:${gitReference.name ?? ""}:${gitReference.commit ?? ""}`)
     .sort()
     .join("|");
-  return `${repository.rootUri.fsPath}:${repository.state.HEAD?.commit ?? ""}:${graphEntryLimit}:${referenceFingerprint}`;
+  return `${repository.rootUri.fsPath}:${repository.state.HEAD?.commit ?? ""}:${graphEntryLimit}:${fileHistoryPath ?? ""}:${searchText}:${referenceFingerprint}`;
 }
 
 function createGraphViewHtml(): string {
@@ -255,13 +339,21 @@ function createGraphViewHtml(): string {
   <style nonce="${nonce}">
     * { box-sizing: border-box; }
     body { margin: 0; color: var(--vscode-foreground); background: transparent; font: var(--vscode-font-size) var(--vscode-font-family); }
-    .toolbar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 5px 9px 5px 12px; color: var(--vscode-descriptionForeground); background: var(--vscode-sideBar-background); box-shadow: inset 0 -1px var(--vscode-sideBarSectionHeader-border, transparent); }
+    .header { position: sticky; top: 0; z-index: 2; padding: 5px 9px 7px 12px; color: var(--vscode-descriptionForeground); background: var(--vscode-sideBar-background); box-shadow: inset 0 -1px var(--vscode-sideBarSectionHeader-border, transparent); }
+    .toolbar { display: flex; align-items: center; gap: 8px; min-height: 28px; }
     .toolbar strong { min-width: 0; overflow: hidden; color: var(--vscode-foreground); text-overflow: ellipsis; white-space: nowrap; }
     .icon-button { display: grid; width: 26px; height: 26px; margin-left: auto; padding: 0; place-items: center; border: 0; border-radius: 5px; color: var(--vscode-icon-foreground); background: transparent; cursor: pointer; transition: background-color 140ms cubic-bezier(.2, .8, .2, 1), transform 140ms cubic-bezier(.2, .8, .2, 1); }
     .icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
     .icon-button:active { transform: rotate(18deg); }
     .icon-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
     .icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; }
+    .search { width: 100%; height: 28px; margin-top: 3px; padding: 0 9px; border: 1px solid var(--vscode-input-border, transparent); border-radius: 5px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); font: inherit; }
+    .search:focus { border-color: var(--vscode-focusBorder); outline: none; }
+    .search::placeholder { color: var(--vscode-input-placeholderForeground); }
+    .scope { display: flex; align-items: center; gap: 6px; min-height: 24px; margin-top: 5px; padding: 2px 5px 2px 8px; border-radius: 5px; color: var(--vscode-textLink-foreground); background: color-mix(in srgb, var(--vscode-textLink-foreground) 12%, transparent); }
+    .scope span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .scope button { flex: 0 0 auto; width: 20px; height: 20px; margin-left: auto; border: 0; border-radius: 4px; color: inherit; background: transparent; cursor: pointer; }
+    .scope button:hover { background: var(--vscode-toolbar-hoverBackground); }
     .row { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 42px; margin: 1px 4px; padding: 0 8px 0 3px; border-radius: 5px; cursor: pointer; outline: none; transition: background-color 120ms cubic-bezier(.2, .8, .2, 1); }
     .row:hover { background: var(--vscode-list-hoverBackground); }
     .row:focus-visible { background: var(--vscode-list-focusBackground); color: var(--vscode-list-focusForeground); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
@@ -271,8 +363,11 @@ function createGraphViewHtml(): string {
     .subject { overflow: hidden; font-weight: 600; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
     .metadata { margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 11px; }
     .hash { font-family: var(--vscode-editor-font-family); }
+    .additions { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
+    .deletions { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
     .references { display: inline-flex; min-width: 0; gap: 3px; }
     .reference { max-width: 140px; overflow: hidden; padding: 1px 6px; border-radius: 999px; color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 12%, transparent); }
+    .reference.branch { color: var(--vscode-charts-green); background: color-mix(in srgb, var(--vscode-charts-green) 18%, transparent); }
     .reference.tag { color: var(--vscode-charts-yellow); background: color-mix(in srgb, var(--vscode-charts-yellow) 18%, transparent); }
     .reference.remote { color: var(--vscode-charts-blue); background: color-mix(in srgb, var(--vscode-charts-blue) 18%, transparent); }
     .state, .more { padding: 14px 12px; color: var(--vscode-descriptionForeground); text-align: center; }
@@ -285,7 +380,7 @@ function createGraphViewHtml(): string {
   </style>
 </head>
 <body>
-  <header class="toolbar"><strong id="repository">History</strong><span id="count"></span><button id="refresh" class="icon-button" type="button" title="Refresh history" aria-label="Refresh history"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 5.5V2.75l-1.15 1.16A5.25 5.25 0 1 0 13.1 9"/><path d="M13 2.75h-2.75"/></svg></button></header>
+  <header class="header"><div class="toolbar"><strong id="repository">History</strong><span id="count"></span><button id="refresh" class="icon-button" type="button" title="Refresh history" aria-label="Refresh history"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 5.5V2.75l-1.15 1.16A5.25 5.25 0 1 0 13.1 9"/><path d="M13 2.75h-2.75"/></svg></button></div><input id="search" class="search" type="search" placeholder="Search commits — author: ref: file:" aria-label="Search commit history"><div id="scope" class="scope" hidden><span id="scope-path"></span><button id="clear-scope" type="button" title="Show repository history" aria-label="Clear file history">×</button></div></header>
   <main id="rows"><div class="state">Loading history…</div></main>
   <button id="more" class="more" type="button" hidden>Load 50 more</button>
   <script nonce="${nonce}">
@@ -296,9 +391,18 @@ function createGraphViewHtml(): string {
     const repositoryNameLabel = document.getElementById('repository');
     const commitCountLabel = document.getElementById('count');
     const loadMoreButton = document.getElementById('more');
+    const searchInput = document.getElementById('search');
+    const fileScope = document.getElementById('scope');
+    const fileScopePath = document.getElementById('scope-path');
+    let searchTimer;
     let currentRepositoryPath;
     document.getElementById('refresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
     loadMoreButton.addEventListener('click', () => vscode.postMessage({ type: 'loadMore' }));
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => vscode.postMessage({ type: 'search', searchText: searchInput.value }), 180);
+    });
+    document.getElementById('clear-scope').addEventListener('click', () => vscode.postMessage({ type: 'clearFileHistory' }));
 
     window.addEventListener('message', messageEvent => {
       const graphViewMessage = messageEvent.data;
@@ -314,6 +418,9 @@ function createGraphViewHtml(): string {
       if (graphViewMessage.type !== 'state') return;
       currentRepositoryPath = graphViewMessage.repositoryPath;
       repositoryNameLabel.textContent = graphViewMessage.repositoryName || 'History';
+      if (searchInput.value !== (graphViewMessage.searchText || '')) searchInput.value = graphViewMessage.searchText || '';
+      fileScope.hidden = !graphViewMessage.fileHistoryPath;
+      fileScopePath.textContent = graphViewMessage.fileHistoryPath ? 'File · ' + graphViewMessage.fileHistoryPath : '';
       commitCountLabel.textContent = graphViewMessage.rows.length ? graphViewMessage.rows.length + ' commits' : '';
       graphRowsContainer.replaceChildren(...(graphViewMessage.rows.length ? graphViewMessage.rows.map(createCommitRow) : [createStatusMessage('No commits yet')]));
       loadMoreButton.hidden = !graphViewMessage.hasMore;
@@ -366,7 +473,8 @@ function createGraphViewHtml(): string {
       const node = document.createElementNS(svgNamespace, 'circle');
       node.setAttribute('cx', nodeX);
       node.setAttribute('cy', '21');
-      node.setAttribute('r', commitRow.parentCount > 1 ? '5' : '4');
+      const changedLineCount = (commitRow.additions || 0) + (commitRow.deletions || 0);
+      node.setAttribute('r', String(Math.min(6, Math.max(commitRow.parentCount > 1 ? 5 : 4, 4 + Math.log10(changedLineCount + 1)))));
       node.setAttribute('fill', 'var(--vscode-sideBar-background)');
       node.setAttribute('stroke', laneColors[commitRow.nodeColorIndex]);
       node.setAttribute('stroke-width', '2.5');
@@ -411,6 +519,15 @@ function createGraphViewHtml(): string {
       const time = document.createElement('span');
       time.textContent = relativeTime(commitRow.committedAt);
       metadata.append(hash, author, time);
+      if (commitRow.additions !== undefined) {
+        const additions = document.createElement('span');
+        additions.className = 'additions';
+        additions.textContent = '+' + commitRow.additions;
+        const deletions = document.createElement('span');
+        deletions.className = 'deletions';
+        deletions.textContent = '−' + commitRow.deletions;
+        metadata.append(additions, deletions);
+      }
       if (commitRow.parentCount > 1) {
         const merge = document.createElement('span');
         merge.textContent = 'merge';

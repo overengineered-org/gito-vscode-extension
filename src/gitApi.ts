@@ -19,6 +19,7 @@ export interface GitCommit {
 
 export interface GitLogOptions {
   readonly maxEntries?: number;
+  readonly path?: string;
   readonly refNames?: readonly string[];
   readonly range?: string;
 }
@@ -28,6 +29,7 @@ export interface GitRepositoryState {
   readonly indexChanges: readonly GitChange[];
   readonly mergeChanges: readonly GitChange[];
   readonly onDidChange: vscode.Event<void>;
+  readonly rebaseCommit?: GitCommit;
   readonly remotes: readonly GitRemote[];
   readonly untrackedChanges: readonly GitChange[];
   readonly worktrees: readonly GitWorktree[];
@@ -54,8 +56,11 @@ export interface GitRepository {
     readonly onDidChange: vscode.Event<void>;
     readonly selected: boolean;
   };
-  add(resourceUris: readonly vscode.Uri[]): Promise<void>;
-  clean(resourceUris: readonly vscode.Uri[]): Promise<void>;
+  add(filePaths: readonly string[]): Promise<void>;
+  checkout(gitReference: string): Promise<void>;
+  clean(filePaths: readonly string[]): Promise<void>;
+  commit(message: string): Promise<void>;
+  createBranch(branchName: string, checkout: boolean, gitReference?: string): Promise<void>;
   createWorktree(options: {
     readonly branch: string;
     readonly commitish: string;
@@ -66,9 +71,13 @@ export interface GitRepository {
     options?: { readonly force?: boolean; readonly label?: string },
   ): Promise<void>;
   getBranchBase(branchName: string): Promise<GitReference | undefined>;
+  getCommit(gitReference: string): Promise<GitCommit>;
   getRefs(query: GitReferenceQuery): Promise<readonly GitReference[]>;
   log(options?: GitLogOptions): Promise<readonly GitCommit[]>;
-  revert(resourceUris: readonly vscode.Uri[]): Promise<void>;
+  merge(gitReference: string): Promise<void>;
+  mergeAbort(): Promise<void>;
+  revert(filePaths: readonly string[]): Promise<void>;
+  status(): Promise<void>;
 }
 
 interface GitReferenceQuery {

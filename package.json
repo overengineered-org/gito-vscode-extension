@@ -97,9 +97,34 @@
         "icon": "$(remove)"
       },
       {
+        "command": "gito.resolveConflict",
+        "title": "Git'o: Resolve Conflict",
+        "icon": "$(git-compare)"
+      },
+      {
         "command": "gito.toggleCommitDiffLayout",
         "title": "Git'o: Toggle Unified / Side-by-Side Diff",
         "icon": "$(layout)"
+      },
+      {
+        "command": "gito.showFileHistory",
+        "title": "Git'o: Show File History",
+        "icon": "$(history)"
+      },
+      {
+        "command": "gito.showCurrentLineBlame",
+        "title": "Git'o: Show Current Line Details",
+        "icon": "$(git-commit)"
+      },
+      {
+        "command": "gito.refreshGit",
+        "title": "Git'o: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gito.toggleInlineBlame",
+        "title": "Git'o: Toggle Current Line Annotation",
+        "icon": "$(eye)"
       },
       {
         "command": "gito.createWorktree",
@@ -163,6 +188,10 @@
         {
           "command": "gito.renameWorktree",
           "when": "false"
+        },
+        {
+          "command": "gito.resolveConflict",
+          "when": "false"
         }
       ],
       "editor/title": [
@@ -170,12 +199,31 @@
           "command": "gito.toggleCommitDiffLayout",
           "when": "activeEditor == multiDiffEditor",
           "group": "navigation@10"
+        },
+        {
+          "command": "gito.showFileHistory",
+          "when": "resourceScheme == file && activeEditor != multiDiffEditor",
+          "group": "navigation@20"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "gito.showFileHistory",
+          "when": "resourceScheme == file",
+          "group": "navigation@20"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "gito.refreshGit",
+          "when": "view == gito.git",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
         {
           "command": "gito.stageChange",
-          "when": "view == gito.changes && (viewItem == gito.change.unstaged || viewItem == gito.change.conflicts)",
+          "when": "view == gito.changes && viewItem == gito.change.unstaged",
           "group": "inline"
         },
         {
@@ -190,7 +238,12 @@
         },
         {
           "command": "gito.stageGroup",
-          "when": "view == gito.changes && (viewItem == gito.group.unstaged || viewItem == gito.group.conflicts)",
+          "when": "view == gito.changes && viewItem == gito.group.unstaged",
+          "group": "inline"
+        },
+        {
+          "command": "gito.resolveConflict",
+          "when": "view == gito.changes && viewItem == gito.change.conflicts",
           "group": "inline"
         },
         {
@@ -223,6 +276,18 @@
           "default": "",
           "scope": "machine",
           "markdownDescription": "Absolute folder for linked worktrees. `~` is supported. Empty stores them beside the primary repository under `.gito-worktrees/<repository>/`."
+        },
+        "gito.blame.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "Show native current-line authorship in the status bar. No repository data leaves your machine."
+        },
+        "gito.blame.inlineEnabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "Show subtle author, age, and commit summary text after the active line."
         }
       }
     },
@@ -239,7 +304,8 @@
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.cjs",
     "build:integration": "esbuild test/integration/suite.ts --bundle --platform=node --format=cjs --external:vscode --outfile=.integration-test/suite.cjs",
-    "check": "npm run typecheck && npm test && npm run build && npm run test:integration",
+    "benchmark:product": "node test/runProductBenchmark.mjs",
+    "check": "npm run typecheck && npm test && npm run benchmark:product && npm run build && npm run test:integration",
     "test": "node --test test/*.test.ts",
     "test:integration": "npm run build:integration && node test/runIntegration.mjs",
     "typecheck": "tsc --noEmit"

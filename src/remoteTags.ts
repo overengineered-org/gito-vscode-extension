@@ -1,5 +1,4 @@
-import { execFile } from "node:child_process";
-
+import { runGitCommand } from "./gitCommand.ts";
 import { type GitReference, GitReferenceType } from "./gitModel.ts";
 
 const remoteTagLinePattern = /^([0-9a-f]{40}|[0-9a-f]{64})\trefs\/tags\/(.+?)(\^\{\})?$/;
@@ -10,11 +9,14 @@ export async function listRemoteTagReferences(
   repositoryRootPath: string,
   remoteName: string,
 ): Promise<readonly GitReference[]> {
-  const remoteTagOutput = await executeGitLsRemote(
-    gitExecutablePath,
-    gitEnvironment,
-    repositoryRootPath,
-    remoteName,
+  const remoteTagOutput = await runGitCommand(
+    {
+      environment: gitEnvironment,
+      executablePath: gitExecutablePath,
+      repositoryPath: repositoryRootPath,
+    },
+    // VS Code's getRemoteRefs omits peeled annotated-tag targets.
+    ["ls-remote", "--tags", "--", remoteName],
   );
   return parseRemoteTagReferences(remoteTagOutput);
 }
@@ -40,33 +42,4 @@ export function parseRemoteTagReferences(remoteTagOutput: string): readonly GitR
   return [...remoteTagsByName.values()].toSorted((firstTag, secondTag) =>
     (firstTag.name ?? "").localeCompare(secondTag.name ?? ""),
   );
-}
-
-function executeGitLsRemote(
-  gitExecutablePath: string,
-  gitEnvironment: Readonly<Record<string, string>>,
-  repositoryRootPath: string,
-  remoteName: string,
-): Promise<string> {
-  return new Promise((resolveRemoteTagOutput, rejectRemoteTagCheck) => {
-    execFile(
-      gitExecutablePath,
-      // VS Code's getRemoteRefs omits peeled annotated-tag targets, so use its Git and auth env.
-      ["ls-remote", "--tags", "--", remoteName],
-      {
-        cwd: repositoryRootPath,
-        encoding: "utf8",
-        env: { ...process.env, ...gitEnvironment, GIT_TERMINAL_PROMPT: "0" },
-        maxBuffer: 4 * 1024 * 1024,
-        timeout: 20_000,
-      },
-      (gitError, remoteTagOutput) => {
-        if (gitError === null) {
-          resolveRemoteTagOutput(remoteTagOutput);
-          return;
-        }
-        rejectRemoteTagCheck(gitError);
-      },
-    );
-  });
 }
