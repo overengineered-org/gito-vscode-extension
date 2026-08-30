@@ -41,10 +41,11 @@ interface ExtensionManifest {
         readonly completionEvents: readonly string[];
         readonly description: string;
         readonly id: string;
-        readonly media: { readonly altText: string; readonly svg: string };
+        readonly media: { readonly altText: string; readonly image: string };
         readonly title: string;
       }[];
       readonly title: string;
+      readonly when?: string;
     }[];
   };
   readonly extensionDependencies: readonly string[];
@@ -180,6 +181,8 @@ test("onboards every feature group through one native walkthrough", () => {
   assert.ok(gettingStartedWalkthrough);
   assert.equal(extensionManifest.contributes.walkthroughs.length, 1);
   assert.equal(gettingStartedWalkthrough.id, "gettingStarted");
+  assert.equal(gettingStartedWalkthrough.when, "!isWeb");
+  assert.match(gettingStartedWalkthrough.description, /under two minutes/iu);
   assert.equal(new Set(gettingStartedWalkthrough.steps.map((step) => step.id)).size, 5);
   assert.deepEqual(
     gettingStartedWalkthrough.steps.map((walkthroughStep) => walkthroughStep.id),
@@ -211,12 +214,12 @@ test("onboards every feature group through one native walkthrough", () => {
   for (const walkthroughStep of gettingStartedWalkthrough.steps) {
     assert.match(walkthroughStep.description, /\[.+\]\(command:[^)]+\)/);
     assert.ok(
-      existsSync(new URL(`../${walkthroughStep.media.svg}`, import.meta.url)),
-      `Missing walkthrough media: ${walkthroughStep.media.svg}`,
+      existsSync(new URL(`../${walkthroughStep.media.image}`, import.meta.url)),
+      `Missing walkthrough media: ${walkthroughStep.media.image}`,
     );
     assert.ok(walkthroughStep.media.altText.length >= 20);
     const walkthroughSvg = readFileSync(
-      new URL(`../${walkthroughStep.media.svg}`, import.meta.url),
+      new URL(`../${walkthroughStep.media.image}`, import.meta.url),
       "utf8",
     );
     assert.match(walkthroughSvg, /<svg[^>]*role="img"[^>]*aria-labelledby=/);

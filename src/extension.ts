@@ -4,11 +4,14 @@ import { WorkingTreeChanges } from "./workingTreeChanges.ts";
 import { CommitView } from "./commitView.ts";
 import { ConflictGuide } from "./conflictGuide.ts";
 import { CurrentLineBlame } from "./currentLineBlame.ts";
+import { openGettingStartedOnFirstActivation } from "./gettingStarted.ts";
 import { loadBuiltInGitApi } from "./gitApi.ts";
 import { GitSidebar, type GitSidebarNode } from "./gitSidebar.ts";
 import { GraphView } from "./graphView.ts";
 import { WorkspaceRepositories } from "./workspaceRepositories.ts";
 import { Worktrees } from "./worktrees.ts";
+
+const gettingStartedOpenedStorageKey = "gito.gettingStarted.v1.opened";
 
 export async function activate(extensionContext: vscode.ExtensionContext): Promise<void> {
   const builtInGitApi = await loadBuiltInGitApi();
@@ -38,9 +41,14 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
     builtInGitApi,
     workspaceRepositories,
     worktrees,
-    extensionContext.globalState,
     diagnostics,
   );
+  const openGettingStartedWalkthrough = () =>
+    vscode.commands.executeCommand(
+      "workbench.action.openWalkthrough",
+      { category: `${extensionContext.extension.id}#gettingStarted` },
+      false,
+    );
   extensionContext.subscriptions.push(
     workspaceRepositories,
     worktrees,
@@ -65,13 +73,7 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
     vscode.commands.registerCommand("gito.toggleInlineBlame", () =>
       currentLineBlame.toggleInlineAnnotation(),
     ),
-    vscode.commands.registerCommand("gito.openGettingStarted", () =>
-      vscode.commands.executeCommand(
-        "workbench.action.openWalkthrough",
-        { category: `${extensionContext.extension.id}#gettingStarted` },
-        false,
-      ),
-    ),
+    vscode.commands.registerCommand("gito.openGettingStarted", openGettingStartedWalkthrough),
     vscode.commands.registerCommand("gito.refreshGit", () => gitSidebar.refresh()),
     vscode.commands.registerCommand("gito.createWorktree", (repositoryRootUri?: vscode.Uri) => {
       const repository =
@@ -121,6 +123,18 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
           : gitSidebar.switchReference(repositoryRootUri, referenceType),
     ),
   );
+  try {
+    await openGettingStartedOnFirstActivation(
+      extensionContext.globalState.get(gettingStartedOpenedStorageKey, false),
+      openGettingStartedWalkthrough,
+      () => extensionContext.globalState.update(gettingStartedOpenedStorageKey, true),
+    );
+  } catch (gettingStartedOpeningFailure) {
+    diagnostics.warn(
+      "Native Getting Started walkthrough failed to open.",
+      gettingStartedOpeningFailure,
+    );
+  }
 }
 
 function resolveWorktreePath(sidebarNodeOrPath: GitSidebarNode | string | undefined): string | undefined {

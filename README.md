@@ -38,11 +38,11 @@ VS Code opens Git'o's native **Get started with Git'o** walkthrough after instal
 4. Feature worktrees, status, labels, and window controls.
 5. File history, current-line details, status-bar blame, and inline annotations.
 
-Run **Git'o: Open Getting Started** from the Command Palette or choose **?** in the Git view to reopen it. The Graph also has its own contextual five-step tour.
+Git'o opens this walkthrough as a full editor tab the first time the extension starts. Run **Git'o: Open Getting Started** from the Command Palette or choose **?** in the Git view to reopen it later.
 
 ## Explore the Graph
 
-Open a local repository, choose **Git'o** in the Activity Bar, then expand **Graph**. A five-step tour appears the first time commits load; choose **?** above the graph to replay it.
+Open a local repository, choose **Git'o** in the Activity Bar, then expand **Graph**.
 
 1. Click a commit to inspect its changed files and diff in one reusable tab.
 2. Hover a commit and choose **•••** to compare it, copy its hash, create a branch or local tag, inspect it detached, apply or revert it, move the current branch, or undo HEAD while keeping changes.

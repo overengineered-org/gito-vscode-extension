@@ -23,7 +23,6 @@ interface PostedGraphMessage {
   readonly actions?: readonly { readonly disabledReason?: string; readonly id: string }[];
   readonly commitHash?: string;
   readonly fileHistoryPath?: string;
-  readonly graphTourCompleted?: boolean;
   readonly repositoryName?: string;
   readonly rows?: readonly { readonly hash: string; readonly subject: string }[];
   readonly searchText?: string;
@@ -180,7 +179,6 @@ export async function run(): Promise<void> {
     gitApi,
     workspaceRepositories,
     worktrees,
-    globalState,
     diagnostics,
   );
   const messageEmitter = new vscode.EventEmitter<unknown>();
@@ -376,12 +374,6 @@ export async function run(): Promise<void> {
     graphView.resolveWebviewView(testWebviewView);
     messageEmitter.fire({ type: "ready" });
     const deliveredGraphState = await waitForGraphState(postedGraphMessages);
-    assert.equal(deliveredGraphState.graphTourCompleted, false);
-    messageEmitter.fire({ type: "completeGraphTour" });
-    await waitForRepositoryState(
-      () => globalState.get("gito.graphTour.v1.completed", false),
-      "Graph tour completion was not persisted.",
-    );
     assert.equal(
       deliveredGraphState.repositoryName,
       undefined,

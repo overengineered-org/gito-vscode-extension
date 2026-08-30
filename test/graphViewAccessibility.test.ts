@@ -26,25 +26,11 @@ test("keeps commit open and action controls as keyboard-accessible siblings", ()
   );
 });
 
-test("provides a persistent, replayable, keyboard-accessible Graph tour", () => {
-  assert.match(
-    graphViewSource,
-    /id="tour-trigger"[^>]*type="button"[^>]*aria-expanded="false"/u,
-  );
-  assert.match(
-    graphViewSource,
-    /id="tour"[^>]*role="dialog"[^>]*aria-live="polite"[^>]*aria-labelledby="tour-title"[^>]*aria-describedby="tour-description"/u,
-  );
-  assert.match(graphViewSource, /id="tour-trigger"[^>]*><svg[^>]*aria-hidden="true"/u);
-  assert.match(
-    graphViewSource,
-    /if \(!graphTourCompleted && graphViewMessage\.rows\.length\) startGraphTour\(false\)/u,
-  );
-  assert.match(graphViewSource, /vscode\.postMessage\(\{ type: 'completeGraphTour' \}\)/u);
-  assert.match(graphViewSource, /graphViewMessage\.type === "completeGraphTour"/u);
-  assert.match(graphViewSource, /globalState\.update\(graphTourCompletedStorageKey, true\)/u);
-  assert.match(graphViewSource, /if \(!graphTour\.hidden\) completeGraphTour\(\)/u);
-  assert.match(graphViewSource, /\.row-actions\.tour-anchor \{ opacity: 1; \}/u);
+test("keeps onboarding out of the compact Graph view", () => {
+  assert.doesNotMatch(graphViewSource, /id="tour"/u);
+  assert.doesNotMatch(graphViewSource, /startGraphTour/u);
+  assert.doesNotMatch(graphViewSource, /completeGraphTour/u);
+  assert.doesNotMatch(graphViewSource, /graphTourCompleted/u);
 });
 
 test("animates Graph hierarchy once per repository and respects reduced motion", () => {
