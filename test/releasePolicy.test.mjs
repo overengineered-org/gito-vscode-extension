@@ -52,7 +52,9 @@ test("validates the exact VSIX across Linux and native release hosts", () => {
   assert.doesNotMatch(releaseWorkflow, /npm ci --ignore-scripts/);
   assert.match(localVerificationScript, /npm run test:integration:vsix/);
   assert.match(localVerificationScript, /scripts\/secret-scan\.sh/);
-  assert.match(localVerificationScript, /release-it \\\n  patch \\\n  --release-version/);
+  assert.match(localVerificationScript, /resolve-release-version\.mjs patch/);
+  assert.match(localVerificationScript, /release-it \\\n  "\$proposed_release_version" \\\n  --release-version/);
+  assert.match(localVerificationScript, /--no-git\.requireUpstream/);
   assert.match(localVerificationScript, /release-it/);
   assert.match(packagedIntegrationRunner, /--install-extension/);
   assert.doesNotMatch(packagedIntegrationRunner, /--disable-extensions/);
@@ -72,7 +74,7 @@ test("reuses tested bytes through release and protected publication", () => {
   assert.match(releaseWorkflow, /sha256sum --check/);
   assert.match(
     releaseWorkflow,
-    /release-it "\$RELEASE_INCREMENT" --release-version --no-git\.push --no-github\.release/,
+    /node scripts\/resolve-release-version\.mjs "\$RELEASE_INCREMENT"/,
   );
   assert.match(releaseWorkflow, /npm run release -- "\$RELEASE_VERSION"/);
   assert.match(releaseWorkflow, /environment: marketplace-production/);
