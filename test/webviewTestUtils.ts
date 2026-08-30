@@ -14,7 +14,7 @@ export function extractGeneratedBrowserScript(webviewSource: string): string {
     "nonce",
     `return \`${htmlTemplate}\`;`,
   )("test-nonce") as string;
-  const browserScript = generatedHtml.match(/<script[^>]*>([\s\S]*?)<\/script>/u)?.[1];
+  const browserScript = generatedHtml.match(/<script[^>]*>([\s\S]*?)<\/script>/iu)?.[1];
   assert.ok(browserScript);
   return browserScript;
 }
