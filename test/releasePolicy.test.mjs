@@ -18,6 +18,8 @@ test("keeps pull-request validation local and release execution explicit", () =>
 });
 
 test("pins and reuses one immutable ACT environment", () => {
+  assert.match(localWorkflow, /name: "Git'o local validation"/);
+  assert.match(localWorkflow, /name: "Git'o Linux, CodeQL, and package validation"/);
   assert.match(
     actConfiguration,
     /ghcr\.io\/catthehacker\/ubuntu:act-24\.04@sha256:dff4ec57d90046a7283aafc314298380be82bfeccb9ad0f1b36c4ebe74aabe78/,

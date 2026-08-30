@@ -1,4 +1,4 @@
-name: Local validation
+name: "Git'o local validation"
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   linux-validation:
-    name: Linux, CodeQL, and package validation
+    name: "Git'o Linux, CodeQL, and package validation"
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
