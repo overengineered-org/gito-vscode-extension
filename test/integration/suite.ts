@@ -23,6 +23,7 @@ interface PostedGraphMessage {
   readonly actions?: readonly { readonly disabledReason?: string; readonly id: string }[];
   readonly commitHash?: string;
   readonly fileHistoryPath?: string;
+  readonly graphTourCompleted?: boolean;
   readonly repositoryName?: string;
   readonly rows?: readonly { readonly hash: string; readonly subject: string }[];
   readonly searchText?: string;
@@ -55,6 +56,7 @@ export async function run(): Promise<void> {
   const missingNativeGitCommands = [
     "git.branch",
     "git.checkout",
+    "git.clone",
     "git.commit",
     "git.commitAll",
     "git.commitAmend",
@@ -79,6 +81,24 @@ export async function run(): Promise<void> {
     missingNativeGitCommands,
     [],
     `VS Code no longer provides native commands used by Git'o: ${missingNativeGitCommands.join(", ")}`,
+  );
+  const gitOExtension = vscode.extensions.getExtension("overengineered-org.gito");
+  assert.ok(gitOExtension, "VS Code did not discover the Git'o development extension.");
+  await gitOExtension.activate();
+  const registeredGitOCommands = new Set(await vscode.commands.getCommands(true));
+  const missingOnboardingCommands = [
+    "gito.commit.focus",
+    "gito.graph.focus",
+    "gito.openGettingStarted",
+    "gito.createWorktree",
+    "gito.showFileHistory",
+    "gito.showCurrentLineBlame",
+    "workbench.view.extension.gito",
+  ].filter((commandId) => !registeredGitOCommands.has(commandId));
+  assert.deepEqual(
+    missingOnboardingCommands,
+    [],
+    `Git'o onboarding links to unregistered commands: ${missingOnboardingCommands.join(", ")}`,
   );
   const repository = await waitForRepository(gitApi, workspaceFolder.uri.fsPath);
   const [branchReferences, tagReferences] = await Promise.all([
@@ -156,7 +176,13 @@ export async function run(): Promise<void> {
   const gitTreeRefreshSubscription = gitSidebar.onDidChangeTreeData((refreshTarget) => {
     gitTreeRefreshTargets.push(refreshTarget);
   });
-  const graphView = new GraphView(gitApi, workspaceRepositories, worktrees, diagnostics);
+  const graphView = new GraphView(
+    gitApi,
+    workspaceRepositories,
+    worktrees,
+    globalState,
+    diagnostics,
+  );
   const messageEmitter = new vscode.EventEmitter<unknown>();
   const disposalEmitter = new vscode.EventEmitter<void>();
   const visibilityEmitter = new vscode.EventEmitter<void>();
@@ -350,6 +376,12 @@ export async function run(): Promise<void> {
     graphView.resolveWebviewView(testWebviewView);
     messageEmitter.fire({ type: "ready" });
     const deliveredGraphState = await waitForGraphState(postedGraphMessages);
+    assert.equal(deliveredGraphState.graphTourCompleted, false);
+    messageEmitter.fire({ type: "completeGraphTour" });
+    await waitForRepositoryState(
+      () => globalState.get("gito.graphTour.v1.completed", false),
+      "Graph tour completion was not persisted.",
+    );
     assert.equal(
       deliveredGraphState.repositoryName,
       undefined,

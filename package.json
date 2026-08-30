@@ -62,6 +62,11 @@
     },
     "commands": [
       {
+        "command": "gito.openGettingStarted",
+        "title": "Git'o: Open Getting Started",
+        "icon": "$(question)"
+      },
+      {
         "command": "gito.compareRemoteTags",
         "title": "Git'o: Compare Tags with Remote",
         "icon": "$(sync)"
@@ -145,6 +150,11 @@
           "command": "gito.refreshGit",
           "when": "view == gito.git",
           "group": "navigation@1"
+        },
+        {
+          "command": "gito.openGettingStarted",
+          "when": "view == gito.git",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -165,6 +175,76 @@
         }
       ]
     },
+    "walkthroughs": [
+      {
+        "id": "gettingStarted",
+        "title": "Get started with Git'o",
+        "description": "Learn the complete local Git workflow in five focused steps.",
+        "steps": [
+          {
+            "id": "gito.gettingStarted.repositories",
+            "title": "Navigate repositories and references",
+            "description": "Git'o follows the repository already open in VS Code. Read branch and tag state through icons, text, and colour, then create, switch, compare, or prune in place.\n[Open Git'o](command:workbench.view.extension.gito)",
+            "media": {
+              "svg": "media/onboarding/repositories.svg",
+              "altText": "Git'o repository tree showing branch and tag states"
+            },
+            "completionEvents": [
+              "onView:gito.git"
+            ]
+          },
+          {
+            "id": "gito.gettingStarted.changes",
+            "title": "Review and commit changes",
+            "description": "Review paths, stage deliberately, write a clear subject, then commit or publish. During conflicts, plain-language branch roles lead into VS Code's Merge Editor.\n[Open Changes](command:gito.commit.focus)",
+            "media": {
+              "svg": "media/onboarding/changes.svg",
+              "altText": "Git'o Changes view with commit composer and staged files"
+            },
+            "completionEvents": [
+              "onView:gito.commit"
+            ]
+          },
+          {
+            "id": "gito.gettingStarted.graph",
+            "title": "Understand and act on history",
+            "description": "Search complete history, inspect commits in one reusable tab, preview sync risk, and run guarded actions. Choose **?** inside Graph for its contextual tour.\n[Open Graph](command:gito.graph.focus)",
+            "media": {
+              "svg": "media/onboarding/graph.svg",
+              "altText": "Git'o Graph showing history lanes, references, search, and sync preview"
+            },
+            "completionEvents": [
+              "onView:gito.graph"
+            ]
+          },
+          {
+            "id": "gito.gettingStarted.worktrees",
+            "title": "Work on features in parallel",
+            "description": "Give each feature its own branch, folder, and VS Code window—without stashing or switching the primary checkout. Monitor and reopen every worktree from Git'o.\n[Create a worktree](command:gito.createWorktree)",
+            "media": {
+              "svg": "media/onboarding/worktrees.svg",
+              "altText": "Primary checkout connected to clean, modified, and conflicted worktrees"
+            },
+            "completionEvents": [
+              "onCommand:gito.createWorktree"
+            ]
+          },
+          {
+            "id": "gito.gettingStarted.fileContext",
+            "title": "Trace a file or line",
+            "description": "Use focused file history when repository history is too broad. Inspect the author, age, summary, and commit behind the active line without leaving the editor.\n[Show file history](command:gito.showFileHistory) · [Show current line details](command:gito.showCurrentLineBlame)",
+            "media": {
+              "svg": "media/onboarding/file-context.svg",
+              "altText": "Editor with current-line authorship beside a focused file-history timeline"
+            },
+            "completionEvents": [
+              "onCommand:gito.showFileHistory",
+              "onCommand:gito.showCurrentLineBlame"
+            ]
+          }
+        ]
+      }
+    ],
     "configuration": {
       "title": "Git'o",
       "properties": {
@@ -194,7 +274,7 @@
     "viewsWelcome": [
       {
         "view": "gito.git",
-        "contents": "Choose how to start.\n[Clone Repository](command:git.clone)\n[Open Folder](command:vscode.openFolder)"
+        "contents": "Choose how to start.\n[Clone Repository](command:git.clone)\n[Open Folder](command:vscode.openFolder)\n[Learn Git'o](command:gito.openGettingStarted)"
       }
     ]
   },

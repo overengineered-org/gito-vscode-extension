@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 interface ExtensionManifest {
@@ -34,6 +34,18 @@ interface ExtensionManifest {
       readonly contents: string;
       readonly view: string;
     }[];
+    readonly walkthroughs: readonly {
+      readonly description: string;
+      readonly id: string;
+      readonly steps: readonly {
+        readonly completionEvents: readonly string[];
+        readonly description: string;
+        readonly id: string;
+        readonly media: { readonly altText: string; readonly svg: string };
+        readonly title: string;
+      }[];
+      readonly title: string;
+    }[];
   };
   readonly extensionDependencies: readonly string[];
   readonly extensionKind: readonly string[];
@@ -61,6 +73,7 @@ test("ships one desktop path backed by VS Code Git", () => {
       commandContribution.command,
     ),
     [
+      "gito.openGettingStarted",
       "gito.compareRemoteTags",
       "gito.showFileHistory",
       "gito.showCurrentLineBlame",
@@ -90,6 +103,11 @@ test("ships one desktop path backed by VS Code Git", () => {
     {
       command: "gito.refreshGit",
       group: "navigation@1",
+      when: "view == gito.git",
+    },
+    {
+      command: "gito.openGettingStarted",
+      group: "navigation@2",
       when: "view == gito.git",
     },
   ]);
@@ -151,8 +169,85 @@ test("ships one desktop path backed by VS Code Git", () => {
   assert.deepEqual(extensionManifest.contributes.viewsWelcome, [
     {
       contents:
-        "Choose how to start.\n[Clone Repository](command:git.clone)\n[Open Folder](command:vscode.openFolder)",
+        "Choose how to start.\n[Clone Repository](command:git.clone)\n[Open Folder](command:vscode.openFolder)\n[Learn Git'o](command:gito.openGettingStarted)",
       view: "gito.git",
     },
   ]);
 });
+
+test("onboards every feature group through one native walkthrough", () => {
+  const [gettingStartedWalkthrough] = extensionManifest.contributes.walkthroughs;
+  assert.ok(gettingStartedWalkthrough);
+  assert.equal(extensionManifest.contributes.walkthroughs.length, 1);
+  assert.equal(gettingStartedWalkthrough.id, "gettingStarted");
+  assert.equal(new Set(gettingStartedWalkthrough.steps.map((step) => step.id)).size, 5);
+  assert.deepEqual(
+    gettingStartedWalkthrough.steps.map((walkthroughStep) => walkthroughStep.id),
+    [
+      "gito.gettingStarted.repositories",
+      "gito.gettingStarted.changes",
+      "gito.gettingStarted.graph",
+      "gito.gettingStarted.worktrees",
+      "gito.gettingStarted.fileContext",
+    ],
+  );
+
+  const contributedCommandIds = new Set(
+    extensionManifest.contributes.commands?.map((commandContribution) =>
+      commandContribution.command,
+    ),
+  );
+  const contributedViewIds = new Set(
+    Object.values(extensionManifest.contributes.views)
+      .flat()
+      .map((viewContribution) => viewContribution.id),
+  );
+  const validWalkthroughCommandIds = new Set([
+    ...contributedCommandIds,
+    "gito.commit.focus",
+    "gito.graph.focus",
+    "workbench.view.extension.gito",
+  ]);
+  for (const walkthroughStep of gettingStartedWalkthrough.steps) {
+    assert.match(walkthroughStep.description, /\[.+\]\(command:[^)]+\)/);
+    assert.ok(
+      existsSync(new URL(`../${walkthroughStep.media.svg}`, import.meta.url)),
+      `Missing walkthrough media: ${walkthroughStep.media.svg}`,
+    );
+    assert.ok(walkthroughStep.media.altText.length >= 20);
+    const walkthroughSvg = readFileSync(
+      new URL(`../${walkthroughStep.media.svg}`, import.meta.url),
+      "utf8",
+    );
+    assert.match(walkthroughSvg, /<svg[^>]*role="img"[^>]*aria-labelledby=/);
+    assert.match(walkthroughSvg, /<title id="title">[^<]+<\/title>/);
+    assert.match(walkthroughSvg, /<desc id="description">[^<]+<\/desc>/);
+    assert.match(walkthroughSvg, /var\(--vscode-/);
+    for (const commandLinkId of extractCommandLinkIds(walkthroughStep.description)) {
+      assert.ok(
+        validWalkthroughCommandIds.has(commandLinkId),
+        `Unknown walkthrough command link: ${commandLinkId}`,
+      );
+    }
+
+    for (const completionEvent of walkthroughStep.completionEvents) {
+      const eventSeparatorIndex = completionEvent.indexOf(":");
+      assert.notEqual(eventSeparatorIndex, -1, completionEvent);
+      const eventKind = completionEvent.slice(0, eventSeparatorIndex);
+      const completionContributionId = completionEvent.slice(eventSeparatorIndex + 1);
+      if (eventKind === "onView") {
+        assert.ok(contributedViewIds.has(completionContributionId), completionEvent);
+      } else if (eventKind === "onCommand") {
+        assert.ok(contributedCommandIds.has(completionContributionId), completionEvent);
+      } else {
+        assert.fail(`Unsupported walkthrough completion event: ${completionEvent}`);
+      }
+    }
+  }
+});
+
+function extractCommandLinkIds(markdown: string): readonly string[] {
+  return [...markdown.matchAll(/\]\(command:([^)]+)\)/g)].map(
+    (commandLinkMatch) => commandLinkMatch[1] ?? "",
+  );
+}

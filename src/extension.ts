@@ -38,6 +38,7 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
     builtInGitApi,
     workspaceRepositories,
     worktrees,
+    extensionContext.globalState,
     diagnostics,
   );
   extensionContext.subscriptions.push(
@@ -64,11 +65,18 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
     vscode.commands.registerCommand("gito.toggleInlineBlame", () =>
       currentLineBlame.toggleInlineAnnotation(),
     ),
+    vscode.commands.registerCommand("gito.openGettingStarted", () =>
+      vscode.commands.executeCommand(
+        "workbench.action.openWalkthrough",
+        { category: `${extensionContext.extension.id}#gettingStarted` },
+        false,
+      ),
+    ),
     vscode.commands.registerCommand("gito.refreshGit", () => gitSidebar.refresh()),
     vscode.commands.registerCommand("gito.createWorktree", (repositoryRootUri?: vscode.Uri) => {
       const repository =
         repositoryRootUri === undefined
-          ? undefined
+          ? workspaceRepositories.selectedRepository
           : workspaceRepositories.findRepository(repositoryRootUri.fsPath);
       return repository === undefined
         ? undefined

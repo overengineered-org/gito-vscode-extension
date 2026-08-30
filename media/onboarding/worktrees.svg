@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title description">
+  <title id="title">Worktree onboarding</title>
+  <desc id="description">A primary checkout connected to separate clean, modified, and conflicted feature worktrees.</desc>
+  <style>
+    .canvas{fill:var(--vscode-editor-background,#1f2428)}.card{fill:var(--vscode-sideBar-background,#252a2e);stroke:var(--vscode-widget-border,#4b5359);stroke-width:1.5}.primary{stroke:var(--vscode-focusBorder,#88b8f6);stroke-width:2}.text{fill:var(--vscode-foreground,#d9d9d9);font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.title{font-size:18px;font-weight:650}.strong{font-weight:650}.muted{fill:var(--vscode-descriptionForeground,#a6adb2);font-size:12px}.connector{fill:none;stroke:var(--vscode-tree-indentGuidesStroke,#667078);stroke-width:2}.clean{fill:var(--vscode-gitDecoration-addedResourceForeground,#89b482)}.modified{fill:var(--vscode-gitDecoration-modifiedResourceForeground,#e2b86b)}.conflict{fill:var(--vscode-gitDecoration-conflictingResourceForeground,#ea6962)}
+  </style>
+  <rect class="canvas" width="640" height="360" rx="16"/>
+  <text class="text title" x="44" y="48">Parallel feature work</text>
+  <path class="connector" d="M265 178h58M323 90v176M323 90h52M323 178h52M323 266h52"/>
+  <rect class="card primary" x="44" y="125" width="221" height="106" rx="12"/>
+  <text class="text strong" x="67" y="158">Primary checkout</text><text class="text" x="67" y="185">main</text><circle class="clean" cx="70" cy="209" r="6"/><text class="text muted" x="84" y="214">Clean · current window</text>
+  <rect class="card" x="375" y="43" width="221" height="94" rx="12"/>
+  <text class="text strong" x="398" y="73">Export workflow</text><text class="text muted" x="398" y="96">feature/export</text><circle class="clean" cx="401" cy="116" r="6"/><text class="text muted" x="415" y="121">Clean</text>
+  <rect class="card" x="375" y="131" width="221" height="94" rx="12"/>
+  <text class="text strong" x="398" y="161">Theme refresh</text><text class="text muted" x="398" y="184">feature/theme</text><circle class="modified" cx="401" cy="204" r="6"/><text class="text muted" x="415" y="209">3 files modified</text>
+  <rect class="card" x="375" y="219" width="221" height="94" rx="12"/>
+  <text class="text strong" x="398" y="249">Release prep</text><text class="text muted" x="398" y="272">release/2.5</text><circle class="conflict" cx="401" cy="292" r="6"/><text class="text muted" x="415" y="297">1 conflict needs attention</text>
+</svg>

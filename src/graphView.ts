@@ -38,6 +38,7 @@ interface GraphWorktreeState {
 
 const graphPageSize = 50;
 const maximumGraphEntries = 500;
+const graphTourCompletedStorageKey = "gito.graphTour.v1.completed";
 
 export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly changedSubscription: vscode.Disposable;
@@ -64,6 +65,7 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
     private readonly gitApi: GitApi,
     private readonly workspaceRepositories: WorkspaceRepositories,
     private readonly worktrees: Worktrees,
+    private readonly globalState: vscode.Memento,
     private readonly diagnostics: vscode.LogOutputChannel,
   ) {
     this.graphActions = new GraphActions(gitApi, diagnostics);
@@ -142,6 +144,10 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
       this.webviewReady = true;
       this.lastGraphSourceKey = undefined;
       await this.refreshRunner.requestRefresh(true);
+      return;
+    }
+    if (graphViewMessage.type === "completeGraphTour") {
+      await this.globalState.update(graphTourCompletedStorageKey, true);
       return;
     }
     if (graphViewMessage.type === "loadMore") {
@@ -466,6 +472,7 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
       this.lastGraphSourceKey = undefined;
       this.visibleCommitSubjectsByHash.clear();
       void this.webviewView?.webview.postMessage({
+        graphTourCompleted: this.globalState.get(graphTourCompletedStorageKey, false),
         hasMore: false,
         repositoryPath: selectedRepository.rootUri.fsPath,
         rows: [],
@@ -541,6 +548,7 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
       const currentBranch = selectedRepository.state.HEAD;
       const graphStateDelivered = await targetWebviewView.webview.postMessage({
         currentBranchName: currentBranch?.name,
+        graphTourCompleted: this.globalState.get(graphTourCompletedStorageKey, false),
         hasMore: commitGraphPage.hasMore && this.graphEntryLimit < maximumGraphEntries,
         headCommitHash: currentBranch?.commit,
         repositoryPath: selectedRepository.rootUri.fsPath,
@@ -691,9 +699,10 @@ function createGraphViewHtml(): string {
     .icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
     .icon-button:active { transform: rotate(18deg); }
     .icon-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+    .tour-trigger { margin-left: auto; }
     .sync-button { min-height: 24px; margin-left: auto; padding: 2px 8px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 5px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); font: inherit; cursor: pointer; }
     .sync-button:hover { background: var(--vscode-button-secondaryHoverBackground); }
-    .sync-button + .icon-button { margin-left: 0; }
+    .sync-button + .tour-trigger, .tour-trigger + .icon-button { margin-left: 0; }
     .icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; }
     .search { width: 100%; height: 28px; margin-top: 3px; padding: 0 9px; border: 1px solid var(--vscode-input-border, transparent); border-radius: 5px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); font: inherit; }
     .search:focus { border-color: var(--vscode-focusBorder); outline: none; }
@@ -711,6 +720,16 @@ function createGraphViewHtml(): string {
     .worktree.conflict .worktree-state { color: var(--vscode-errorForeground); }
     .worktree.modified .worktree-state { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
     .worktree.clean .worktree-state { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
+    .tour { margin: 7px 8px; padding: 10px; border: 1px solid var(--vscode-focusBorder); border-radius: 7px; background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background)); box-shadow: 0 5px 18px color-mix(in srgb, #000 22%, transparent); }
+    .tour-progress { color: var(--vscode-textLink-foreground); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .tour-title { margin-top: 3px; font-weight: 700; }
+    .tour-description { margin-top: 3px; color: var(--vscode-descriptionForeground); line-height: 1.35; }
+    .tour-actions { display: flex; gap: 5px; justify-content: flex-end; margin-top: 9px; }
+    .tour-actions button { min-height: 26px; padding: 2px 8px; border: 0; border-radius: 5px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); font: inherit; cursor: pointer; }
+    .tour-actions button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+    .tour-actions .tour-next { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+    .tour-actions .tour-next:hover { background: var(--vscode-button-hoverBackground); }
+    .tour-anchor { position: relative; z-index: 3; outline: 2px solid var(--vscode-focusBorder) !important; outline-offset: 2px; }
     .panel { margin: 7px 8px; padding: 9px; border: 1px solid var(--vscode-widget-border, var(--vscode-sideBarSectionHeader-border)); border-radius: 7px; background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background)); box-shadow: 0 4px 14px color-mix(in srgb, #000 18%, transparent); }
     .panel-header { display: flex; align-items: flex-start; gap: 8px; }
     .panel-title { min-width: 0; font-weight: 700; }
@@ -745,6 +764,7 @@ function createGraphViewHtml(): string {
     .content { align-self: center; min-width: 0; padding: 4px 0; }
     .row-actions { align-self: center; width: 26px; height: 26px; border: 0; border-radius: 5px; color: var(--vscode-icon-foreground); background: transparent; cursor: pointer; opacity: 0; }
     .row:hover .row-actions, .row:focus-within .row-actions { opacity: 1; }
+    .row-actions.tour-anchor { opacity: 1; }
     .row-actions:hover { background: var(--vscode-toolbar-hoverBackground); }
     .headline, .metadata { display: flex; min-width: 0; align-items: center; gap: 6px; }
     .subject { overflow: hidden; font-weight: 600; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
@@ -767,7 +787,8 @@ function createGraphViewHtml(): string {
   </style>
 </head>
 <body>
-  <header class="header"><div class="toolbar"><span id="count" class="commit-count"></span><button id="sync" class="sync-button" type="button" hidden>Preview Sync</button><button id="refresh" class="icon-button" type="button" title="Refresh history" aria-label="Refresh history"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 5.5V2.75l-1.15 1.16A5.25 5.25 0 1 0 13.1 9"/><path d="M13 2.75h-2.75"/></svg></button></div><input id="search" class="search" type="search" placeholder="Search commits — author: ref: file:" aria-label="Search commit history"><div id="scope" class="scope" hidden><span id="scope-path"></span><button id="clear-scope" type="button" title="Show repository history" aria-label="Clear file history">×</button></div><div id="worktrees" class="worktrees" hidden></div></header>
+  <header id="graph-header" class="header"><div class="toolbar"><span id="count" class="commit-count"></span><button id="sync" class="sync-button" type="button" hidden>Preview Sync</button><button id="tour-trigger" class="icon-button tour-trigger" type="button" title="Show Graph tour" aria-label="Show Graph tour" aria-expanded="false"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.75"/><path d="M6.75 6.2A1.45 1.45 0 0 1 8.2 4.9c.9 0 1.55.55 1.55 1.35 0 1.5-1.75 1.45-1.75 2.9"/><path d="M8 11.4h.01"/></svg></button><button id="refresh" class="icon-button" type="button" title="Refresh history" aria-label="Refresh history"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 5.5V2.75l-1.15 1.16A5.25 5.25 0 1 0 13.1 9"/><path d="M13 2.75h-2.75"/></svg></button></div><input id="search" class="search" type="search" placeholder="Search commits — author: ref: file:" aria-label="Search commit history" title="Search all commits. Filters: author:, message:, ref:, and file:"><div id="scope" class="scope" hidden><span id="scope-path"></span><button id="clear-scope" type="button" title="Show repository history" aria-label="Clear file history">×</button></div><div id="worktrees" class="worktrees" hidden></div></header>
+  <section id="tour" class="tour" role="dialog" aria-live="polite" aria-labelledby="tour-title" aria-describedby="tour-description" hidden><div id="tour-progress" class="tour-progress"></div><div id="tour-title" class="tour-title"></div><div id="tour-description" class="tour-description"></div><div class="tour-actions"><button id="tour-skip" type="button">Skip tour</button><button id="tour-back" type="button">Back</button><button id="tour-next" class="tour-next" type="button">Next</button></div></section>
   <section id="panel" class="panel" aria-live="polite" hidden></section>
   <div id="notice" class="notice" role="status" hidden></div>
   <main id="rows"><div class="state">Loading history…</div></main>
@@ -786,11 +807,30 @@ function createGraphViewHtml(): string {
     const notice = document.getElementById('notice');
     const syncButton = document.getElementById('sync');
     const worktreeStrip = document.getElementById('worktrees');
+    const graphHeader = document.getElementById('graph-header');
+    const graphTour = document.getElementById('tour');
+    const graphTourTrigger = document.getElementById('tour-trigger');
+    const graphTourProgress = document.getElementById('tour-progress');
+    const graphTourTitle = document.getElementById('tour-title');
+    const graphTourDescription = document.getElementById('tour-description');
+    const graphTourBack = document.getElementById('tour-back');
+    const graphTourNext = document.getElementById('tour-next');
     let searchTimer;
     let currentRepositoryPath;
     let actionBusy = false;
+    let graphTourStepIndex = 0;
+    let graphTourAnchor;
+    let graphTourCompleted = false;
     document.getElementById('refresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
     syncButton.addEventListener('click', () => vscode.postMessage({ type: 'previewSync', repositoryPath: currentRepositoryPath }));
+    graphTourTrigger.addEventListener('click', () => startGraphTour(true));
+    document.getElementById('tour-skip').addEventListener('click', completeGraphTour);
+    graphTourBack.addEventListener('click', () => showGraphTourStep(graphTourStepIndex - 1));
+    graphTourNext.addEventListener('click', () => {
+      const tourSteps = availableGraphTourSteps();
+      if (graphTourStepIndex >= tourSteps.length - 1) completeGraphTour();
+      else showGraphTourStep(graphTourStepIndex + 1);
+    });
     loadMoreButton.addEventListener('click', () => vscode.postMessage({ type: 'loadMore' }));
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
@@ -840,15 +880,19 @@ function createGraphViewHtml(): string {
       }
       if (graphViewMessage.type !== 'state') return;
       currentRepositoryPath = graphViewMessage.repositoryPath;
+      graphTourCompleted = Boolean(graphViewMessage.graphTourCompleted) || graphTourCompleted;
       if (searchInput.value !== (graphViewMessage.searchText || '')) searchInput.value = graphViewMessage.searchText || '';
       fileScope.hidden = !graphViewMessage.fileHistoryPath;
       fileScopePath.textContent = graphViewMessage.fileHistoryPath ? 'File · ' + graphViewMessage.fileHistoryPath : '';
       commitCountLabel.textContent = graphViewMessage.rows.length ? graphViewMessage.rows.length + ' commits' : '';
       syncButton.hidden = !graphViewMessage.upstreamName;
       syncButton.textContent = graphViewMessage.upstreamName ? 'Sync · ' + graphViewMessage.upstreamName : 'Preview Sync';
+      syncButton.title = graphViewMessage.upstreamName ? 'Preview incoming and outgoing commits before Pull or Push' : 'Preview repository sync';
       renderWorktrees(graphViewMessage.worktrees || []);
       graphRowsContainer.replaceChildren(...(graphViewMessage.rows.length ? graphViewMessage.rows.map(createCommitRow) : [createStatusMessage('No commits yet')]));
       loadMoreButton.hidden = !graphViewMessage.hasMore;
+      if (!graphTour.hidden) showGraphTourStep(graphTourStepIndex);
+      else if (!graphTourCompleted && graphViewMessage.rows.length) startGraphTour(false);
     });
     vscode.postMessage({ type: 'ready' });
 
@@ -867,13 +911,14 @@ function createGraphViewHtml(): string {
       commitOpenButton.className = 'row-main';
       commitOpenButton.type = 'button';
       commitOpenButton.setAttribute('aria-label', commitRow.subject + ', ' + commitRow.authorName + ', ' + exactDate(commitRow.committedAt));
+      commitOpenButton.title = 'Open changed files from this commit';
       commitOpenButton.append(createGraph(commitRow), createCommitDetails(commitRow));
       commitOpenButton.addEventListener('click', () => openCommit(commitRow.hash));
       const commitActionsButton = document.createElement('button');
       commitActionsButton.className = 'row-actions';
       commitActionsButton.type = 'button';
       commitActionsButton.textContent = '•••';
-      commitActionsButton.title = 'Commit actions';
+      commitActionsButton.title = 'Compare, create, apply, revert, or safely rewrite from this commit';
       commitActionsButton.setAttribute('aria-label', 'Actions for ' + commitRow.subject);
       commitActionsButton.addEventListener('click', () => {
         vscode.postMessage({ type: 'selectCommit', commitHash: commitRow.hash, repositoryPath: currentRepositoryPath });
@@ -891,6 +936,57 @@ function createGraphViewHtml(): string {
         }
       });
       return commitRowElement;
+    }
+
+    function availableGraphTourSteps() {
+      const firstCommitOpenButton = graphRowsContainer.querySelector('.row-main');
+      const firstCommitActionsButton = graphRowsContainer.querySelector('.row-actions');
+      const syncTourStep = syncButton.hidden
+        ? { anchor: graphHeader, title: 'Connect an upstream to preview sync', description: 'Set an upstream branch first. The Graph will then preview incoming commits, outgoing commits, changed paths, and predicted conflicts.' }
+        : { anchor: syncButton, title: 'Preview before sync', description: 'See incoming and outgoing commits, changed paths, and predicted conflicts before Pull or Push.' };
+      const worktreeTourStep = worktreeStrip.hidden
+        ? { anchor: graphHeader, title: 'Follow files and worktrees', description: 'Right-click a file for visual history. Create a linked worktree to see its branch and WIP state above the graph.' }
+        : { anchor: worktreeStrip, title: 'Follow files and worktrees', description: 'Right-click a file for visual history. Linked worktrees appear here with branch and WIP state.' };
+      return [
+        { anchor: firstCommitOpenButton || graphRowsContainer, title: 'Open commit changes', description: 'Click a commit to inspect its changed files and diff in one reusable tab.' },
+        { anchor: firstCommitActionsButton || graphRowsContainer, title: 'Act on any commit', description: 'Hover a commit, then choose ••• to compare, branch, tag, apply, revert, or safely rewrite.' },
+        { anchor: searchInput, title: 'Search complete history', description: 'Search text or narrow results with author:, message:, ref:, and file: filters.' },
+        syncTourStep,
+        worktreeTourStep
+      ];
+    }
+
+    function startGraphTour(restartCompletedTour) {
+      if ((!restartCompletedTour && graphTourCompleted) || !graphRowsContainer.querySelector('.row-main')) return;
+      graphTour.hidden = false;
+      graphTourTrigger.setAttribute('aria-expanded', 'true');
+      showGraphTourStep(0);
+      graphTourNext.focus();
+    }
+
+    function showGraphTourStep(requestedStepIndex) {
+      const tourSteps = availableGraphTourSteps();
+      graphTourStepIndex = Math.min(tourSteps.length - 1, Math.max(0, requestedStepIndex));
+      graphTourAnchor?.classList.remove('tour-anchor');
+      const tourStep = tourSteps[graphTourStepIndex];
+      graphTourAnchor = tourStep.anchor;
+      graphTourAnchor.classList.add('tour-anchor');
+      graphTourAnchor.scrollIntoView?.({ block: 'nearest' });
+      graphTourProgress.textContent = 'Graph tour · ' + (graphTourStepIndex + 1) + '/' + tourSteps.length;
+      graphTourTitle.textContent = tourStep.title;
+      graphTourDescription.textContent = tourStep.description;
+      graphTourBack.disabled = graphTourStepIndex === 0;
+      graphTourNext.textContent = graphTourStepIndex === tourSteps.length - 1 ? 'Done' : 'Next';
+    }
+
+    function completeGraphTour() {
+      graphTourAnchor?.classList.remove('tour-anchor');
+      graphTourAnchor = undefined;
+      graphTour.hidden = true;
+      graphTourCompleted = true;
+      graphTourTrigger.setAttribute('aria-expanded', 'false');
+      vscode.postMessage({ type: 'completeGraphTour' });
+      graphTourTrigger.focus();
     }
 
     function renderWorktrees(worktrees) {
@@ -1100,7 +1196,9 @@ function createGraphViewHtml(): string {
     }
 
     document.addEventListener('keydown', keyboardEvent => {
-      if (keyboardEvent.key === 'Escape' && !actionPanel.hidden) closeActionPanel();
+      if (keyboardEvent.key !== 'Escape') return;
+      if (!graphTour.hidden) completeGraphTour();
+      else if (!actionPanel.hidden) closeActionPanel();
     });
 
     function openCommit(commitHash) { vscode.postMessage({ type: 'openCommit', commitHash, repositoryPath: currentRepositoryPath }); }

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title description">
+  <title id="title">Repository, branch, and tag onboarding</title>
+  <desc id="description">A Git'o repository tree showing the current branch, local and remote branches, and tag synchronization states.</desc>
+  <style>
+    .canvas{fill:var(--vscode-editor-background,#1f2428)}.panel{fill:var(--vscode-sideBar-background,#252a2e);stroke:var(--vscode-widget-border,#4b5359)}.row{fill:var(--vscode-list-hoverBackground,#30363b)}.text{fill:var(--vscode-foreground,#d9d9d9);font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.title{font-size:18px;font-weight:650}.muted{fill:var(--vscode-descriptionForeground,#a6adb2);font-size:13px}.line{fill:none;stroke:var(--vscode-tree-indentGuidesStroke,#667078);stroke-width:1.5}.current{fill:var(--vscode-gitDecoration-addedResourceForeground,#89b482)}.ahead{fill:var(--vscode-charts-purple,#d3869b)}.behind{fill:var(--vscode-gitDecoration-modifiedResourceForeground,#e2b86b)}.remote{fill:var(--vscode-gitDecoration-submoduleResourceForeground,#7daea3)}.danger{fill:var(--vscode-gitDecoration-deletedResourceForeground,#ea6962)}.accent{fill:none;stroke:var(--vscode-focusBorder,#88b8f6);stroke-width:2}
+  </style>
+  <rect class="canvas" width="640" height="360" rx="16"/>
+  <rect class="panel" x="45" y="28" width="550" height="304" rx="12"/>
+  <text class="text title" x="70" y="63">Git'o · Git</text>
+  <rect class="row" x="61" y="78" width="518" height="42" rx="7"/>
+  <rect class="accent" x="61" y="78" width="518" height="42" rx="7"/>
+  <circle class="current" cx="83" cy="99" r="7"/>
+  <text class="text" x="102" y="105">studio-app</text>
+  <text class="text muted" x="207" y="105">main · synced with origin/main</text>
+  <path class="line" d="M83 120v180M83 143h20M83 233h20"/>
+  <text class="text title" x="111" y="151">Branches</text>
+  <circle class="current" cx="123" cy="177" r="6"/><text class="text" x="140" y="182">main</text><text class="text muted" x="198" y="182">Current · synced</text>
+  <circle class="ahead" cx="123" cy="205" r="6"/><text class="text" x="140" y="210">feature/export</text><text class="text muted" x="258" y="210">2 ahead of origin/feature/export</text>
+  <circle class="remote" cx="401" cy="177" r="6"/><text class="text" x="418" y="182">origin/release</text><text class="text muted" x="418" y="202">Remote only</text>
+  <text class="text title" x="111" y="241">Tags</text>
+  <circle class="current" cx="123" cy="267" r="6"/><text class="text" x="140" y="272">v2.4.0</text><text class="text muted" x="202" y="272">Synced</text>
+  <circle class="behind" cx="300" cy="267" r="6"/><text class="text" x="317" y="272">v2.5.0</text><text class="text muted" x="379" y="272">Local only</text>
+  <circle class="danger" cx="123" cy="295" r="6"/><text class="text" x="140" y="300">preview</text><text class="text muted" x="205" y="300">Same name · different commits</text>
+</svg>

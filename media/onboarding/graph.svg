@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title description">
+  <title id="title">Graph onboarding</title>
+  <desc id="description">A Git'o commit graph with search, branch and tag references, merge lanes, commit actions, and a synchronization preview.</desc>
+  <style>
+    .canvas{fill:var(--vscode-editor-background,#1f2428)}.panel{fill:var(--vscode-sideBar-background,#252a2e);stroke:var(--vscode-widget-border,#4b5359)}.input{fill:var(--vscode-input-background,#30363b);stroke:var(--vscode-input-border,#59636a)}.card{fill:var(--vscode-editorWidget-background,#2b3035);stroke:var(--vscode-widget-border,#4b5359)}.text{fill:var(--vscode-foreground,#d9d9d9);font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.title{font-size:18px;font-weight:650}.strong{font-weight:650}.muted{fill:var(--vscode-descriptionForeground,#a6adb2);font-size:12px}.lane{fill:none;stroke:var(--vscode-charts-blue,#7daea3);stroke-width:3}.merge{fill:none;stroke:var(--vscode-charts-purple,#d3869b);stroke-width:3}.node{fill:var(--vscode-sideBar-background,#252a2e);stroke:var(--vscode-charts-blue,#7daea3);stroke-width:3}.mergeNode{fill:var(--vscode-sideBar-background,#252a2e);stroke:var(--vscode-charts-purple,#d3869b);stroke-width:3}.ref{fill:var(--vscode-badge-background,#577590)}.refText{fill:var(--vscode-badge-foreground,#fff);font-size:11px}.accent{fill:none;stroke:var(--vscode-focusBorder,#88b8f6);stroke-width:2}
+  </style>
+  <rect class="canvas" width="640" height="360" rx="16"/>
+  <rect class="panel" x="30" y="24" width="580" height="312" rx="12"/>
+  <text class="text title" x="52" y="58">Graph</text>
+  <rect class="input" x="52" y="73" width="350" height="34" rx="6"/><text class="text muted" x="67" y="95">Search commits — author: ref: file:</text>
+  <rect class="card" x="416" y="73" width="170" height="34" rx="6"/><text class="text" x="438" y="95">Sync · origin/main</text>
+  <path class="lane" d="M82 130v178"/><path class="merge" d="M108 168c0 30-26 28-26 54v28c0 24 26 24 26 48"/>
+  <circle class="node" cx="82" cy="142" r="7"/><circle class="mergeNode" cx="108" cy="180" r="7"/><circle class="node" cx="82" cy="218" r="7"/><circle class="node" cx="82" cy="256" r="7"/><circle class="mergeNode" cx="108" cy="298" r="7"/>
+  <text class="text strong" x="132" y="147">feat: preview synchronization risk</text><rect class="ref" x="444" y="130" width="53" height="23" rx="11"/><text class="refText" x="457" y="146">main</text><text class="text muted" x="510" y="147">•••</text>
+  <text class="text strong" x="132" y="185">fix: keep reusable diff tab</text><rect class="ref" x="420" y="168" width="82" height="23" rx="11"/><text class="refText" x="431" y="184">v2.5.0</text><text class="text muted" x="516" y="185">•••</text>
+  <text class="text" x="132" y="223">refactor: simplify graph actions</text><text class="text muted" x="500" y="223">•••</text>
+  <text class="text" x="132" y="261">test: guard complete history search</text><text class="text muted" x="500" y="261">•••</text>
+  <text class="text" x="132" y="303">docs: explain worktree state</text><text class="text muted" x="500" y="303">•••</text>
+  <rect class="accent" x="416" y="73" width="170" height="34" rx="6"/>
+</svg>
