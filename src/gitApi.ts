@@ -24,7 +24,7 @@ export interface GitLogOptions {
   readonly range?: string;
 }
 
-export interface GitRepositoryState {
+interface GitRepositoryState {
   readonly HEAD?: GitReference;
   readonly indexChanges: readonly GitChange[];
   readonly mergeChanges: readonly GitChange[];
@@ -44,7 +44,7 @@ export interface GitWorktree {
   readonly ref: string;
 }
 
-export interface GitRemote {
+interface GitRemote {
   readonly name: string;
 }
 
@@ -70,14 +70,23 @@ export interface GitRepository {
     worktreePath: string,
     options?: { readonly force?: boolean; readonly label?: string },
   ): Promise<void>;
+  fetch(options?: { readonly prune?: boolean; readonly remote?: string }): Promise<void>;
   getBranchBase(branchName: string): Promise<GitReference | undefined>;
   getCommit(gitReference: string): Promise<GitCommit>;
   getRefs(query: GitReferenceQuery): Promise<readonly GitReference[]>;
   log(options?: GitLogOptions): Promise<readonly GitCommit[]>;
   merge(gitReference: string): Promise<void>;
   mergeAbort(): Promise<void>;
+  pull(unshallow?: boolean): Promise<void>;
+  push(
+    remoteName?: string,
+    branchName?: string,
+    setUpstream?: boolean,
+    forceMode?: number,
+  ): Promise<void>;
   revert(filePaths: readonly string[]): Promise<void>;
   status(): Promise<void>;
+  tag(tagName: string, message: string, gitReference?: string): Promise<void>;
 }
 
 interface GitReferenceQuery {

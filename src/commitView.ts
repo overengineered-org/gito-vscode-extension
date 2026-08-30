@@ -2,6 +2,14 @@ import { randomBytes } from "node:crypto";
 
 import * as vscode from "vscode";
 
+import {
+  type ChangeAction,
+  type ChangeGroupKind,
+  changeGroupLabel,
+  createWorkingTreeChangePresentation,
+  WorkingTreeChanges,
+} from "./workingTreeChanges.ts";
+import type { ConflictGuide } from "./conflictGuide.ts";
 import type { GitRepository } from "./gitApi.ts";
 import {
   defaultCommitAction,
@@ -9,9 +17,13 @@ import {
   type NativeGitAction,
 } from "./gitActionMenu.ts";
 import { countRepositoryChanges } from "./gitModel.ts";
+import { pathsIdentifySameLocation } from "./pathIdentity.ts";
 import type { WorkspaceRepositories } from "./workspaceRepositories.ts";
 
 interface CommitViewMessage {
+  readonly action?: ChangeAction | "open" | "resolve" | "stageGroup" | "unstageGroup";
+  readonly filePath?: string;
+  readonly groupKind?: ChangeGroupKind;
   readonly message?: string;
   readonly repositoryPath?: string;
   readonly type?: string;
@@ -20,12 +32,15 @@ interface CommitViewMessage {
 export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly changedSubscription: vscode.Disposable;
   private gitActionInProgress = false;
+  private workingTreeActionInProgress = false;
   private resolvedViewSubscriptions: vscode.Disposable | undefined;
   private webviewReady = false;
   private webviewView: vscode.WebviewView | undefined;
 
   public constructor(
     private readonly workspaceRepositories: WorkspaceRepositories,
+    private readonly workingTreeChanges: WorkingTreeChanges,
+    private readonly conflictGuide: ConflictGuide,
     private readonly diagnostics: vscode.LogOutputChannel,
   ) {
     this.changedSubscription = workspaceRepositories.onDidChange(() => this.postCommitViewState());
@@ -87,12 +102,45 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
           message: "The selected repository is no longer open.",
           type: "commitStatus",
         });
+      } else if (commitViewMessage.type === "changeAction") {
+        void this.webviewView?.webview.postMessage({
+          busy: false,
+          completed: true,
+          message: "The selected repository is no longer open.",
+          type: "changeStatus",
+        });
       }
       return;
     }
     if (commitViewMessage.type === "setMessage") {
       if (typeof commitViewMessage.message === "string" && commitViewMessage.message.length <= 10_000) {
         targetRepository.inputBox.value = commitViewMessage.message;
+      }
+      return;
+    }
+    if (
+      commitViewMessage.type === "changeAction" &&
+      commitViewMessage.groupKind !== undefined &&
+      commitViewMessage.action !== undefined &&
+      !this.workingTreeActionInProgress
+    ) {
+      this.workingTreeActionInProgress = true;
+      void this.webviewView?.webview.postMessage({ busy: true, type: "changeStatus" });
+      let failureMessage: string | undefined;
+      try {
+        await this.runChangeAction(targetRepository, commitViewMessage);
+      } catch (changeActionFailure) {
+        this.diagnostics.error("Working tree action failed.", changeActionFailure);
+        failureMessage = `Working tree action failed: ${errorMessage(changeActionFailure)}`;
+      } finally {
+        this.workingTreeActionInProgress = false;
+        this.postCommitViewState();
+        void this.webviewView?.webview.postMessage({
+          busy: false,
+          completed: true,
+          ...(failureMessage === undefined ? {} : { message: failureMessage }),
+          type: "changeStatus",
+        });
       }
       return;
     }
@@ -106,6 +154,60 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
           : () => chooseNativeGitAction(targetRepository),
         targetRepository,
       );
+    }
+  }
+
+  private async runChangeAction(
+    repository: GitRepository,
+    commitViewMessage: CommitViewMessage,
+  ): Promise<void> {
+    const changeGroup = this.workingTreeChanges
+      .getGroups(repository)
+      .find(
+        (candidateChangeGroup) =>
+          candidateChangeGroup.groupKind === commitViewMessage.groupKind &&
+          candidateChangeGroup.repository === repository,
+      );
+    if (changeGroup === undefined) {
+      throw new Error(`The ${commitViewMessage.groupKind} change group is no longer available.`);
+    }
+    if (commitViewMessage.action === "stageGroup" || commitViewMessage.action === "unstageGroup") {
+      await this.workingTreeChanges.runGroupAction(
+        commitViewMessage.action === "stageGroup" ? "stage" : "unstage",
+        changeGroup,
+      );
+      return;
+    }
+    if (commitViewMessage.filePath === undefined) {
+      throw new Error("No file was selected.");
+    }
+    const changeNode = this.workingTreeChanges
+      .getChanges(changeGroup)
+      .find(
+        (candidateWorkingTreeChange) =>
+          pathsIdentifySameLocation(
+            candidateWorkingTreeChange.change.uri.fsPath,
+            commitViewMessage.filePath ?? "",
+          ),
+      );
+    if (changeNode === undefined) {
+      throw new Error("The selected file is no longer in this change group.");
+    }
+    if (commitViewMessage.action === "open") {
+      await vscode.commands.executeCommand("git.openChange", changeNode.change.uri);
+    } else if (commitViewMessage.action === "resolve") {
+      await this.conflictGuide.open(
+        repository,
+        changeNode.change.uri,
+        changeNode.changePosition,
+        changeNode.changeCount,
+      );
+    } else if (
+      commitViewMessage.action === "discard" ||
+      commitViewMessage.action === "stage" ||
+      commitViewMessage.action === "unstage"
+    ) {
+      await this.workingTreeChanges.runChangeAction(commitViewMessage.action, changeNode);
     }
   }
 
@@ -152,9 +254,14 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
         this.workspaceRepositories.repositories,
         selectedRepository,
         this.gitActionInProgress,
+        this.workingTreeChanges,
       ),
     );
   }
+}
+
+function errorMessage(changeActionFailure: unknown): string {
+  return changeActionFailure instanceof Error ? changeActionFailure.message : String(changeActionFailure);
 }
 
 async function chooseNativeGitAction(
@@ -201,6 +308,7 @@ function createCommitViewState(
   workspaceRepositories: readonly GitRepository[],
   selectedRepository: GitRepository | undefined,
   gitActionInProgress: boolean,
+  workingTreeChanges: WorkingTreeChanges,
 ): object {
   const stagedChangeCount = selectedRepository?.state.indexChanges.length ?? 0;
   const unstagedChangeCount = selectedRepository
@@ -211,6 +319,7 @@ function createCommitViewState(
   return {
     branchName: selectedRepository?.state.HEAD?.name ?? "Detached HEAD",
     commitMessage: selectedRepository?.inputBox.value ?? "",
+    changeGroups: createChangeGroupStates(workingTreeChanges, selectedRepository),
     gitActionInProgress,
     repositories: workspaceRepositories.map((repository) => ({
       label:
@@ -222,6 +331,24 @@ function createCommitViewState(
     type: "state",
     unstagedChangeCount,
   };
+}
+
+function createChangeGroupStates(
+  workingTreeChanges: WorkingTreeChanges,
+  selectedRepository: GitRepository | undefined,
+): readonly object[] {
+  return workingTreeChanges.getGroups(selectedRepository).map((changeGroup) => ({
+    changes: workingTreeChanges.getChanges(changeGroup).map((workingTreeChange) => {
+      const changePresentation = createWorkingTreeChangePresentation(workingTreeChange);
+      return {
+        description: changePresentation.description,
+        filePath: workingTreeChange.change.uri.fsPath,
+        label: changePresentation.fileName,
+      };
+    }),
+    groupKind: changeGroup.groupKind,
+    label: changeGroupLabel(changeGroup.groupKind),
+  }));
 }
 
 function createCommitViewHtml(): string {
@@ -265,6 +392,23 @@ function createCommitViewHtml(): string {
     .message-count { margin-left: auto; font-variant-numeric: tabular-nums; }
     .message-count[data-over-limit="true"] { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); font-weight: 600; }
     .error { padding: 7px 9px; border-radius: 5px; color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); background: var(--vscode-inputValidation-errorBackground, transparent); font-size: 11px; box-shadow: inset 0 0 0 1px var(--vscode-inputValidation-errorBorder, transparent); }
+    .changes { display: grid; gap: 4px; margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border)); }
+    .changes[data-busy="true"] { opacity: .55; pointer-events: none; }
+    .clean-state { display: flex; align-items: center; gap: 8px; min-height: 30px; color: var(--vscode-descriptionForeground); }
+    .clean-state svg { width: 15px; height: 15px; color: var(--vscode-testing-iconPassed, var(--vscode-gitDecoration-addedResourceForeground)); fill: currentColor; }
+    .change-group { display: grid; gap: 1px; }
+    .change-group-header { display: flex; align-items: center; gap: 7px; min-height: 30px; font-weight: 600; }
+    .change-group-count { min-width: 20px; padding: 1px 6px; border-radius: 10px; color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); font-size: 10px; font-variant-numeric: tabular-nums; text-align: center; }
+    .change-group-action, .change-action, .change-main { width: auto; min-height: 26px; color: var(--vscode-foreground); background: transparent; }
+    .change-group-action { margin-left: auto; padding: 0 7px; border-radius: 4px; color: var(--vscode-descriptionForeground); font-size: 11px; }
+    .change-group-action:hover, .change-action:hover, .change-main:hover { color: var(--vscode-list-hoverForeground); background: var(--vscode-list-hoverBackground); }
+    .change-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px 28px; align-items: center; min-height: 30px; border-radius: 4px; }
+    .change-row.single-action { grid-template-columns: minmax(0, 1fr) 28px; }
+    .change-main { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 7px; padding: 4px 7px; text-align: left; }
+    .change-name { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+    .change-description { overflow: hidden; color: var(--vscode-descriptionForeground); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .change-action { display: grid; place-items: center; padding: 0; border-radius: 4px; color: var(--vscode-descriptionForeground); font-size: 16px; }
+    .change-action[hidden] { display: none; }
     .screen-reader-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     [hidden] { display: none !important; }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; } }
@@ -289,6 +433,7 @@ function createCommitViewHtml(): string {
       <output id="message-count" class="message-count" role="status" aria-live="polite" aria-atomic="true">0/50</output>
     </div>
     <div id="error" class="error" role="alert" hidden></div>
+    <section id="changes" class="changes" aria-label="Working tree changes"></section>
   </main>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
@@ -305,10 +450,12 @@ function createCommitViewHtml(): string {
     const unstagedChangeCount = document.getElementById('unstaged');
     const branchName = document.getElementById('branch');
     const commitError = document.getElementById('error');
+    const changesContainer = document.getElementById('changes');
     const idealCommitSubjectLength = 50;
     const graphemeSegmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : undefined;
     let commitViewState;
     let gitActionRequestPending = false;
+    let workingTreeActionPending = false;
 
     repositorySelector.addEventListener('change', () => vscode.postMessage({ type: 'selectRepository', repositoryPath: repositorySelector.value }));
     commitMessageInput.addEventListener('input', () => {
@@ -336,6 +483,13 @@ function createCommitViewHtml(): string {
         updateCommitAvailability();
         return;
       }
+      if (commitViewMessage.type === 'changeStatus') {
+        workingTreeActionPending = commitViewMessage.busy === true;
+        changesContainer.dataset.busy = String(workingTreeActionPending);
+        commitError.hidden = !commitViewMessage.message;
+        commitError.textContent = commitViewMessage.message || '';
+        return;
+      }
       if (commitViewMessage.type !== 'state') return;
       commitViewState = commitViewMessage;
       repositorySelector.hidden = commitViewState.repositories.length < 2;
@@ -356,6 +510,7 @@ function createCommitViewHtml(): string {
       commitMessageInput.placeholder = 'Message (' + (navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+') + 'Enter to commit on "' + commitViewState.branchName + '")';
       updateCommitMessagePresentation();
       updateCommitAvailability();
+      renderChangeGroups();
     });
     vscode.postMessage({ type: 'ready' });
 
@@ -368,6 +523,102 @@ function createCommitViewHtml(): string {
       commitOptionsButton.disabled = true;
       commitError.hidden = true;
       vscode.postMessage({ type: gitActionType, repositoryPath: repositorySelector.value });
+    }
+
+    function requestChangeAction(action, groupKind, filePath) {
+      if (workingTreeActionPending) return;
+      workingTreeActionPending = true;
+      changesContainer.dataset.busy = 'true';
+      commitError.hidden = true;
+      vscode.postMessage({
+        action,
+        groupKind,
+        ...(filePath ? { filePath } : {}),
+        repositoryPath: repositorySelector.value,
+        type: 'changeAction',
+      });
+    }
+
+    function renderChangeGroups() {
+      const changeGroups = commitViewState?.changeGroups ?? [];
+      if (changeGroups.length === 0) {
+        const cleanState = document.createElement('div');
+        cleanState.className = 'clean-state';
+        cleanState.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.25A6.75 6.75 0 1 0 8 14.75 6.75 6.75 0 0 0 8 1.25Zm3.28 4.95-3.8 4a.75.75 0 0 1-1.08.01L4.7 8.51a.75.75 0 0 1 1.06-1.06l1.16 1.16 3.27-3.44a.75.75 0 1 1 1.09 1.03Z"/></svg><span>Working Tree Clean</span>';
+        changesContainer.replaceChildren(cleanState);
+        return;
+      }
+      changesContainer.replaceChildren(...changeGroups.map(createChangeGroup));
+    }
+
+    function createChangeGroup(changeGroup) {
+      const groupSection = document.createElement('section');
+      groupSection.className = 'change-group';
+      const groupHeader = document.createElement('div');
+      groupHeader.className = 'change-group-header';
+      const groupLabel = document.createElement('span');
+      groupLabel.textContent = changeGroup.label;
+      const groupCount = document.createElement('span');
+      groupCount.className = 'change-group-count';
+      groupCount.textContent = changeGroup.changes.length;
+      groupHeader.append(groupLabel, groupCount);
+      if (changeGroup.groupKind !== 'conflicts') {
+        const groupAction = document.createElement('button');
+        groupAction.className = 'change-group-action';
+        groupAction.type = 'button';
+        groupAction.textContent = changeGroup.groupKind === 'staged' ? 'Unstage All' : 'Stage All';
+        groupAction.addEventListener('click', () => requestChangeAction(
+          changeGroup.groupKind === 'staged' ? 'unstageGroup' : 'stageGroup',
+          changeGroup.groupKind,
+        ));
+        groupHeader.append(groupAction);
+      }
+      groupSection.append(groupHeader, ...changeGroup.changes.map(change => createChangeRow(changeGroup.groupKind, change)));
+      return groupSection;
+    }
+
+    function createChangeRow(groupKind, change) {
+      const changeRow = document.createElement('div');
+      changeRow.className = 'change-row' + (groupKind === 'unstaged' ? '' : ' single-action');
+      const openAction = document.createElement('button');
+      openAction.className = 'change-main';
+      openAction.type = 'button';
+      const changeName = document.createElement('span');
+      changeName.className = 'change-name';
+      changeName.textContent = change.label;
+      const changeDescription = document.createElement('span');
+      changeDescription.className = 'change-description';
+      changeDescription.textContent = change.description;
+      openAction.append(changeName, changeDescription);
+      openAction.title = groupKind === 'conflicts' ? 'Open conflict guide' : 'Open changes';
+      openAction.addEventListener('click', () => requestChangeAction(
+        groupKind === 'conflicts' ? 'resolve' : 'open',
+        groupKind,
+        change.filePath,
+      ));
+
+      const primaryAction = document.createElement('button');
+      primaryAction.className = 'change-action';
+      primaryAction.type = 'button';
+      primaryAction.textContent = groupKind === 'staged' ? '−' : groupKind === 'conflicts' ? '↔' : '+';
+      primaryAction.title = groupKind === 'staged' ? 'Unstage' : groupKind === 'conflicts' ? 'Resolve conflict' : 'Stage';
+      primaryAction.setAttribute('aria-label', primaryAction.title + ' ' + change.label);
+      primaryAction.addEventListener('click', () => requestChangeAction(
+        groupKind === 'staged' ? 'unstage' : groupKind === 'conflicts' ? 'resolve' : 'stage',
+        groupKind,
+        change.filePath,
+      ));
+
+      const discardAction = document.createElement('button');
+      discardAction.className = 'change-action';
+      discardAction.type = 'button';
+      discardAction.textContent = '↶';
+      discardAction.title = 'Discard changes';
+      discardAction.setAttribute('aria-label', 'Discard changes in ' + change.label);
+      discardAction.addEventListener('click', () => requestChangeAction('discard', groupKind, change.filePath));
+      changeRow.append(openAction, primaryAction);
+      if (groupKind === 'unstaged') changeRow.append(discardAction);
+      return changeRow;
     }
 
     function updateCommitAvailability() {

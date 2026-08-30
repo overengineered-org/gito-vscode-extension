@@ -1,7 +1,7 @@
 import { basename, dirname, isAbsolute, join, normalize } from "node:path";
 
 import type { GitWorktree } from "./gitApi.ts";
-import { canonicalizePath } from "./pathIdentity.ts";
+import { canonicalizePath, pathsIdentifySameLocation } from "./pathIdentity.ts";
 
 export interface RepositoryFamilyCandidate {
   readonly repositoryPath: string;
@@ -42,7 +42,8 @@ export function selectRepositoryFamilyRepresentatives(
     );
     if (
       !representativeByFamily.has(repositoryFamilyKey) ||
-      repositoryCandidate.repositoryPath === selectedRepositoryPath
+      (selectedRepositoryPath !== undefined &&
+        pathsIdentifySameLocation(repositoryCandidate.repositoryPath, selectedRepositoryPath))
     ) {
       representativeByFamily.set(repositoryFamilyKey, repositoryCandidate.repositoryPath);
     }

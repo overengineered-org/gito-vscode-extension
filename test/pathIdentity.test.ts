@@ -15,6 +15,11 @@ test("treats symlink aliases as one repository location", () => {
     assert.equal(canonicalizePath(pathAlias), canonicalizePath(pathIdentityFixture));
   } finally {
     rmSync(pathAlias, { force: true });
-    rmSync(pathIdentityFixture, { force: true, recursive: true });
+    rmSync(pathIdentityFixture, {
+      force: true,
+      maxRetries: 5,
+      recursive: true,
+      retryDelay: 50,
+    });
   }
 });

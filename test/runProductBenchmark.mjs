@@ -76,7 +76,12 @@ try {
   assert.ok(worktreeStatusMilliseconds < 1_000, "Worktree status exceeded the 1 second product budget.");
   process.stdout.write(`${JSON.stringify(benchmarkMeasurements)}\n`);
 } finally {
-  rmSync(benchmarkRepositoryPath, { force: true, recursive: true });
+  rmSync(benchmarkRepositoryPath, {
+    force: true,
+    maxRetries: 5,
+    recursive: true,
+    retryDelay: 50,
+  });
 }
 
 function runGit(gitArguments) {

@@ -98,6 +98,7 @@ export type GitSidebarNode =
     };
 
 export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vscode.Disposable {
+  private readonly automaticTagComparisonKeyByRepositoryPath = new Map<string, string>();
   private readonly branchLagSnapshots = new Map<string, BranchLagSnapshot>();
   private readonly branchLagRefreshes = new Map<string, BranchLagRefresh>();
   private readonly remoteTagComparisonTokens = new Map<string, symbol>();
@@ -122,8 +123,12 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
     );
     this.worktreeSubscription = worktrees.onDidChange(() => this.refresh());
     this.windowFocusSubscription = vscode.window.onDidChangeWindowState((windowState) => {
-      if (windowState.focused) this.scheduleRefresh();
+      if (windowState.focused) {
+        this.automaticTagComparisonKeyByRepositoryPath.clear();
+        this.scheduleRefresh();
+      }
     });
+    queueMicrotask(() => this.refresh());
   }
 
   public dispose(): void {
@@ -260,7 +265,10 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
     }
   }
 
-  public async compareRemoteTags(repositoryRootUri: vscode.Uri): Promise<void> {
+  public async compareRemoteTags(
+    repositoryRootUri: vscode.Uri,
+    automaticComparison = false,
+  ): Promise<void> {
     const repository = this.workspaceRepositories.findRepository(repositoryRootUri.fsPath);
     if (repository === undefined) {
       void vscode.window.showErrorMessage(
@@ -280,8 +288,9 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
       return;
     }
 
-    const remoteName =
-      remoteNames.length === 1
+    const remoteName = automaticComparison
+      ? (remoteNames.find((candidateRemoteName) => candidateRemoteName === "origin") ?? remoteNames[0])
+      : remoteNames.length === 1
         ? remoteNames[0]
         : await vscode.window.showQuickPick(remoteNames, {
             placeHolder: "Select the remote whose tags you want to compare",
@@ -295,19 +304,22 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
     const comparisonToken = Symbol(remoteName);
     this.remoteTagComparisonTokens.set(repositoryPath, comparisonToken);
     try {
-      const remoteTagReferences = await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: `Git'o: Comparing tags with ${remoteName}`,
-        },
-        () =>
-          listRemoteTagReferences(
-            this.gitApi.git.path,
-            this.gitApi.git.env,
-            repository.rootUri.fsPath,
-            remoteName,
-          ),
-      );
+      const loadRemoteTagReferences = () =>
+        listRemoteTagReferences(
+          this.gitApi.git.path,
+          this.gitApi.git.env,
+          repository.rootUri.fsPath,
+          remoteName,
+        );
+      const remoteTagReferences = automaticComparison
+        ? await loadRemoteTagReferences()
+        : await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: `Git'o: Comparing tags with ${remoteName}`,
+            },
+            loadRemoteTagReferences,
+          );
       const currentRepository = this.workspaceRepositories.findRepository(repositoryPath);
       if (
         this.remoteTagComparisonTokens.get(repositoryPath) !== comparisonToken ||
@@ -324,15 +336,20 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
       // not the same object currently held by VS Code. Refresh the root to make
       // the saved comparison visible immediately.
       this.treeChangedEmitter.fire(undefined);
-      void vscode.window.showInformationMessage(
-        `Git'o: Compared ${remoteTagReferences.length} remote ${remoteTagReferences.length === 1 ? "tag" : "tags"} with ${remoteName}.`,
-      );
+      if (!automaticComparison) {
+        void vscode.window.showInformationMessage(
+          `Git'o: Compared ${remoteTagReferences.length} remote ${remoteTagReferences.length === 1 ? "tag" : "tags"} with ${remoteName}.`,
+        );
+      }
     } catch (tagComparisonFailure) {
       this.diagnostics.error(
         `Remote tag comparison failed for '${remoteName}'.`,
         tagComparisonFailure,
       );
-      if (this.remoteTagComparisonTokens.get(repositoryPath) === comparisonToken) {
+      if (
+        !automaticComparison &&
+        this.remoteTagComparisonTokens.get(repositoryPath) === comparisonToken
+      ) {
         void vscode.window.showErrorMessage(
           `Git'o could not read tags from '${remoteName}'. Check the remote and VS Code's Git authentication, then retry.`,
         );
@@ -657,6 +674,11 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
         this.remoteTagSnapshots.delete(repositoryPath);
       }
     }
+    for (const repositoryPath of this.automaticTagComparisonKeyByRepositoryPath.keys()) {
+      if (!workspaceRepositoryPaths.has(repositoryPath)) {
+        this.automaticTagComparisonKeyByRepositoryPath.delete(repositoryPath);
+      }
+    }
     for (const repositoryPath of this.remoteTagComparisonTokens.keys()) {
       if (!workspaceRepositoryPaths.has(repositoryPath)) {
         this.remoteTagComparisonTokens.delete(repositoryPath);
@@ -680,6 +702,25 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
         !repository.state.remotes.some((remote) => remote.name === remoteTagSnapshot.remoteName)
       ) {
         this.remoteTagSnapshots.delete(repositoryPath);
+      }
+      if (!this.remoteTagSnapshots.has(repositoryPath)) {
+        const remoteNames = repository.state.remotes
+          .map((remote) => remote.name)
+          .filter((remoteName) => remoteName !== "")
+          .toSorted();
+        const automaticComparisonKey = remoteNames.join("\0");
+        if (
+          remoteNames.length > 0 &&
+          !this.remoteTagComparisonTokens.has(repositoryPath) &&
+          this.automaticTagComparisonKeyByRepositoryPath.get(repositoryPath) !==
+            automaticComparisonKey
+        ) {
+          this.automaticTagComparisonKeyByRepositoryPath.set(
+            repositoryPath,
+            automaticComparisonKey,
+          );
+          void this.compareRemoteTags(repository.rootUri, true);
+        }
       }
     }
     this.treeChangedEmitter.fire(undefined);
@@ -873,7 +914,11 @@ export class GitSidebar implements vscode.TreeDataProvider<GitSidebarNode>, vsco
         referenceGroupNode.repository.rootUri.fsPath,
       );
       referenceGroupTreeItem.description =
-        remoteTagSnapshot === undefined ? "remote unchecked" : `${remoteTagSnapshot.remoteName} checked`;
+        remoteTagSnapshot === undefined
+          ? this.remoteTagComparisonTokens.has(referenceGroupNode.repository.rootUri.fsPath)
+            ? "checking remote…"
+            : "remote unavailable"
+          : `${remoteTagSnapshot.remoteName} checked`;
     }
     referenceGroupTreeItem.iconPath = new vscode.ThemeIcon(
       referenceGroupNode.referenceType === "branch" ? "git-branch" : "tag",

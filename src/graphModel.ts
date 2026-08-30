@@ -2,14 +2,14 @@ import type { GitCommit } from "./gitApi.ts";
 import type { FileChangeStats } from "./graphSearch.ts";
 import { type GitReference, GitReferenceType } from "./gitModel.ts";
 
-export interface GraphConnection {
+interface GraphConnection {
   readonly colorIndex: number;
   readonly fromLane: number;
   readonly startsAtNode: boolean;
   readonly toLane: number;
 }
 
-export interface GraphReferenceLabel {
+interface GraphReferenceLabel {
   readonly kind: "branch" | "remote" | "tag";
   readonly name: string;
 }

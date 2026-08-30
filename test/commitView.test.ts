@@ -6,17 +6,23 @@ import { runInNewContext } from "node:vm";
 import { extractGeneratedBrowserScript } from "./webviewTestUtils.ts";
 
 class SimulatedWebviewElement {
+  public attributes: Record<string, string> = {};
   public clientHeight = 34;
   public clientWidth = 300;
+  public children: SimulatedWebviewElement[] = [];
+  public className = "";
   public dataset: Record<string, string> = {};
   public disabled = false;
   public hidden = false;
+  public innerHTML = "";
   public placeholder = "";
   public scrollLeft = 0;
   public scrollTop = 0;
   public selected = false;
   public style: Record<string, string> = {};
   public textContent = "";
+  public title = "";
+  public type = "";
   public value = "";
 
   private readonly eventListeners = new Map<string, (event?: unknown) => void>();
@@ -32,7 +38,18 @@ class SimulatedWebviewElement {
     this.eventListeners.get(eventName)?.(event);
   }
 
-  public replaceChildren(): void {}
+  public append(...children: SimulatedWebviewElement[]): void {
+    this.children.push(...children);
+  }
+
+  public replaceChildren(...children: SimulatedWebviewElement[]): void {
+    this.children = children;
+    this.value = children.find((child) => child.selected)?.value ?? this.value;
+  }
+
+  public setAttribute(attributeName: string, attributeValue: string): void {
+    this.attributes[attributeName] = attributeValue;
+  }
 }
 
 const commitViewSource = readFileSync(
@@ -41,8 +58,9 @@ const commitViewSource = readFileSync(
 );
 const generatedCommitViewScript = extractGeneratedBrowserScript(commitViewSource);
 
-test("highlights commit subject graphemes beyond 50 without highlighting the body", () => {
+test("keeps commit controls and working-tree actions synchronized", () => {
   const simulatedElements = new Map<string, SimulatedWebviewElement>();
+  const postedMessages: unknown[] = [];
   let windowMessageListener: ((event: unknown) => void) | undefined;
   const getSimulatedElement = (elementId: string): SimulatedWebviewElement => {
     const existingElement = simulatedElements.get(elementId);
@@ -60,7 +78,7 @@ test("highlights commit subject graphemes beyond 50 without highlighting the bod
   };
 
   runInNewContext(generatedCommitViewScript, {
-    acquireVsCodeApi: () => ({ postMessage: () => undefined }),
+    acquireVsCodeApi: () => ({ postMessage: (message: unknown) => postedMessages.push(message) }),
     document: simulatedDocument,
     Intl,
     navigator: { platform: "MacIntel" },
@@ -191,4 +209,69 @@ test("highlights commit subject graphemes beyond 50 without highlighting the bod
   assert.equal(commitMessageInput.disabled, true);
   assert.equal(getSimulatedElement("commit").disabled, true);
   assert.equal(getSimulatedElement("commit-options").disabled, true);
+
+  windowMessageListener({
+    data: {
+      branchName: "main",
+      changeGroups: [{
+        changes: [{
+          description: "src M",
+          filePath: "/repository/src/changed.ts",
+          label: "changed.ts",
+        }],
+        groupKind: "unstaged",
+        label: "Changes",
+      }],
+      gitActionInProgress: false,
+      commitMessage: "",
+      repositories: [{ label: "Git'o", path: "/repository" }],
+      selectedRepositoryPath: "/repository",
+      stagedChangeCount: 0,
+      type: "state",
+      unstagedChangeCount: 1,
+    },
+  });
+  const [changeGroup] = getSimulatedElement("changes").children;
+  assert.ok(changeGroup);
+  const [changeGroupHeader, changeRow] = changeGroup.children;
+  assert.ok(changeGroupHeader);
+  assert.ok(changeRow);
+  const stageAllButton = changeGroupHeader.children.at(-1);
+  stageAllButton?.dispatch("click");
+  stageAllButton?.dispatch("click");
+  windowMessageListener({ data: { busy: false, completed: true, type: "changeStatus" } });
+  changeRow.children[0]?.dispatch("click");
+  windowMessageListener({ data: { busy: false, completed: true, type: "changeStatus" } });
+  changeRow.children[1]?.dispatch("click");
+  windowMessageListener({ data: { busy: false, completed: true, type: "changeStatus" } });
+  changeRow.children[2]?.dispatch("click");
+  assert.deepEqual(JSON.parse(JSON.stringify(postedMessages.slice(-4))), [
+    {
+      action: "stageGroup",
+      groupKind: "unstaged",
+      repositoryPath: "/repository",
+      type: "changeAction",
+    },
+    {
+      action: "open",
+      filePath: "/repository/src/changed.ts",
+      groupKind: "unstaged",
+      repositoryPath: "/repository",
+      type: "changeAction",
+    },
+    {
+      action: "stage",
+      filePath: "/repository/src/changed.ts",
+      groupKind: "unstaged",
+      repositoryPath: "/repository",
+      type: "changeAction",
+    },
+    {
+      action: "discard",
+      filePath: "/repository/src/changed.ts",
+      groupKind: "unstaged",
+      repositoryPath: "/repository",
+      type: "changeAction",
+    },
+  ]);
 });

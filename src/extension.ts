@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { ChangesSidebar, type ChangesSidebarNode } from "./changesSidebar.ts";
+import { WorkingTreeChanges } from "./workingTreeChanges.ts";
 import { CommitView } from "./commitView.ts";
 import { ConflictGuide } from "./conflictGuide.ts";
 import { CurrentLineBlame } from "./currentLineBlame.ts";
@@ -27,54 +27,34 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
     worktrees,
     diagnostics,
   );
-  const commitView = new CommitView(workspaceRepositories, diagnostics);
-  const changesSidebar = new ChangesSidebar(workspaceRepositories);
-  const graphView = new GraphView(builtInGitApi, workspaceRepositories, diagnostics);
+  const workingTreeChanges = new WorkingTreeChanges(workspaceRepositories);
+  const commitView = new CommitView(
+    workspaceRepositories,
+    workingTreeChanges,
+    conflictGuide,
+    diagnostics,
+  );
+  const graphView = new GraphView(
+    builtInGitApi,
+    workspaceRepositories,
+    worktrees,
+    diagnostics,
+  );
   extensionContext.subscriptions.push(
     workspaceRepositories,
     worktrees,
     diagnostics,
     gitSidebar,
     commitView,
-    changesSidebar,
     currentLineBlame,
     graphView,
     vscode.window.registerTreeDataProvider("gito.git", gitSidebar),
     vscode.window.registerWebviewViewProvider("gito.commit", commitView, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
-    vscode.window.registerTreeDataProvider("gito.changes", changesSidebar),
     vscode.window.registerWebviewViewProvider("gito.graph", graphView, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
-    vscode.commands.registerCommand("gito.stageChange", (sidebarNode?: ChangesSidebarNode) =>
-      changesSidebar.runChangeAction("stage", sidebarNode),
-    ),
-    vscode.commands.registerCommand("gito.unstageChange", (sidebarNode?: ChangesSidebarNode) =>
-      changesSidebar.runChangeAction("unstage", sidebarNode),
-    ),
-    vscode.commands.registerCommand("gito.discardChange", (sidebarNode?: ChangesSidebarNode) =>
-      changesSidebar.runChangeAction("discard", sidebarNode),
-    ),
-    vscode.commands.registerCommand("gito.stageGroup", (sidebarNode?: ChangesSidebarNode) =>
-      changesSidebar.runGroupAction("stage", sidebarNode),
-    ),
-    vscode.commands.registerCommand("gito.unstageGroup", (sidebarNode?: ChangesSidebarNode) =>
-      changesSidebar.runGroupAction("unstage", sidebarNode),
-    ),
-    vscode.commands.registerCommand("gito.resolveConflict", (sidebarNode?: ChangesSidebarNode) =>
-      sidebarNode?.nodeType === "change" && sidebarNode.groupKind === "conflicts"
-        ? conflictGuide.open(
-            sidebarNode.repository,
-            sidebarNode.change.uri,
-            sidebarNode.changePosition,
-            sidebarNode.changeCount,
-          )
-        : undefined,
-    ),
-    vscode.commands.registerCommand("gito.toggleCommitDiffLayout", () =>
-      vscode.commands.executeCommand("toggle.diff.renderSideBySide"),
-    ),
     vscode.commands.registerCommand("gito.showFileHistory", (fileUri?: vscode.Uri) =>
       graphView.showFileHistory(fileUri),
     ),

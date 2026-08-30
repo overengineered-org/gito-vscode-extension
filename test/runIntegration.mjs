@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -34,24 +34,26 @@ try {
   runGit(["-C", workspaceRepositoryPath, "tag", "local-only"]);
   runGit(["-C", workspaceRepositoryPath, "tag", "--delete", "v1.1.0"]);
 
-  const installedVsCodeExecutable =
-    "/Applications/Visual Studio Code.app/Contents/MacOS/Code";
   await runTests({
     extensionDevelopmentPath: resolve("."),
     extensionTestsPath: resolve(".integration-test/suite.cjs"),
     launchArgs: [
       workspaceRepositoryPath,
+      `--extensions-dir=${join(integrationFixtureRoot, "extensions")}`,
+      `--user-data-dir=${join(integrationFixtureRoot, "user-data")}`,
       "--disable-extensions",
       "--disable-telemetry",
       "--disable-workspace-trust",
       "--skip-welcome",
     ],
-    ...(existsSync(installedVsCodeExecutable)
-      ? { vscodeExecutablePath: installedVsCodeExecutable }
-      : {}),
   });
 } finally {
-  rmSync(integrationFixtureRoot, { force: true, recursive: true });
+  rmSync(integrationFixtureRoot, {
+    force: true,
+    maxRetries: 5,
+    recursive: true,
+    retryDelay: 50,
+  });
 }
 
 function runGit(gitArguments) {

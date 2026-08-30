@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 
 import * as vscode from "vscode";
 
-import { ChangesSidebar } from "../../src/changesSidebar.ts";
-import { inspectConflictContext } from "../../src/conflictGuide.ts";
+import { WorkingTreeChanges } from "../../src/workingTreeChanges.ts";
+import { CommitView } from "../../src/commitView.ts";
+import { ConflictGuide, inspectConflictContext } from "../../src/conflictGuide.ts";
 import { createConflictGuidePresentation } from "../../src/conflictGuideModel.ts";
 import { loadBuiltInGitApi } from "../../src/gitApi.ts";
 import { GitSidebar } from "../../src/gitSidebar.ts";
@@ -19,10 +20,30 @@ import { Worktrees } from "../../src/worktrees.ts";
 import { loadWorktreeWipSummary } from "../../src/worktreeStatus.ts";
 
 interface PostedGraphMessage {
+  readonly actions?: readonly { readonly disabledReason?: string; readonly id: string }[];
+  readonly commitHash?: string;
   readonly fileHistoryPath?: string;
-  readonly rows?: readonly { readonly subject: string }[];
+  readonly repositoryName?: string;
+  readonly rows?: readonly { readonly hash: string; readonly subject: string }[];
   readonly searchText?: string;
+  readonly syncPreview?: {
+    readonly incomingCommitCount: number;
+    readonly outgoingCommitCount: number;
+    readonly upstreamName: string;
+    readonly workingTreeClean: boolean;
+  };
   readonly type?: string;
+  readonly worktrees?: readonly { readonly displayName: string; readonly summary: string }[];
+}
+
+interface PostedCommitMessage {
+  readonly completed?: boolean;
+  readonly changeGroups?: readonly {
+    readonly changes: readonly { readonly filePath: string }[];
+    readonly groupKind: string;
+  }[];
+  readonly type?: string;
+  readonly message?: string;
 }
 
 export async function run(): Promise<void> {
@@ -30,6 +51,35 @@ export async function run(): Promise<void> {
   assert.ok(workspaceFolder, "Integration workspace did not open.");
 
   const gitApi = await loadBuiltInGitApi();
+  const availableVsCodeCommands = new Set(await vscode.commands.getCommands(true));
+  const missingNativeGitCommands = [
+    "git.branch",
+    "git.checkout",
+    "git.commit",
+    "git.commitAll",
+    "git.commitAmend",
+    "git.commitStaged",
+    "git.createTag",
+    "git.deleteBranch",
+    "git.fetch",
+    "git.fetchPrune",
+    "git.openChange",
+    "git.openMergeEditor",
+    "git.push",
+    "git.pushForce",
+    "git.pushTags",
+    "git.pushTo",
+    "git.pushToForce",
+    "git.pushWithTags",
+    "git.rebaseAbort",
+    "git.viewCommit",
+    "vscode.openFolder",
+  ].filter((commandId) => !availableVsCodeCommands.has(commandId));
+  assert.deepEqual(
+    missingNativeGitCommands,
+    [],
+    `VS Code no longer provides native commands used by Git'o: ${missingNativeGitCommands.join(", ")}`,
+  );
   const repository = await waitForRepository(gitApi, workspaceFolder.uri.fsPath);
   const [branchReferences, tagReferences] = await Promise.all([
     repository.getRefs({ pattern: ["refs/heads", "refs/remotes"] }),
@@ -94,16 +144,39 @@ export async function run(): Promise<void> {
   const globalState = new MemoryMemento();
   const worktrees = new Worktrees(gitApi, globalState, diagnostics);
   const gitSidebar = new GitSidebar(gitApi, workspaceRepositories, worktrees, diagnostics);
-  const changesSidebar = new ChangesSidebar(workspaceRepositories);
+  const workingTreeChanges = new WorkingTreeChanges(workspaceRepositories);
+  const conflictGuide = new ConflictGuide(diagnostics);
+  const commitView = new CommitView(
+    workspaceRepositories,
+    workingTreeChanges,
+    conflictGuide,
+    diagnostics,
+  );
   const gitTreeRefreshTargets: unknown[] = [];
   const gitTreeRefreshSubscription = gitSidebar.onDidChangeTreeData((refreshTarget) => {
     gitTreeRefreshTargets.push(refreshTarget);
   });
-  const graphView = new GraphView(gitApi, workspaceRepositories, diagnostics);
+  const graphView = new GraphView(gitApi, workspaceRepositories, worktrees, diagnostics);
   const messageEmitter = new vscode.EventEmitter<unknown>();
   const disposalEmitter = new vscode.EventEmitter<void>();
   const visibilityEmitter = new vscode.EventEmitter<void>();
   const postedGraphMessages: PostedGraphMessage[] = [];
+  const commitMessageEmitter = new vscode.EventEmitter<unknown>();
+  const commitDisposalEmitter = new vscode.EventEmitter<void>();
+  const postedCommitMessages: PostedCommitMessage[] = [];
+  const testCommitWebview = {
+    html: "",
+    onDidReceiveMessage: commitMessageEmitter.event,
+    options: {},
+    postMessage: (commitMessage: PostedCommitMessage) => {
+      postedCommitMessages.push(commitMessage);
+      return Promise.resolve(true);
+    },
+  };
+  const testCommitWebviewView = {
+    onDidDispose: commitDisposalEmitter.event,
+    webview: testCommitWebview,
+  } as unknown as vscode.WebviewView;
   const testWebview = {
     html: "",
     onDidReceiveMessage: messageEmitter.event,
@@ -126,6 +199,8 @@ export async function run(): Promise<void> {
   const mergeConflictUri = vscode.Uri.joinPath(repository.rootUri, "merge-conflict.txt");
 
   try {
+    commitView.resolveWebviewView(testCommitWebviewView);
+    commitMessageEmitter.fire({ type: "ready" });
     const expectedWorktreePath = createWorktreeCheckoutPath(
       repository.rootUri.fsPath,
       repository.state.worktrees,
@@ -151,6 +226,8 @@ export async function run(): Promise<void> {
     );
     await worktrees.setDisplayName(createdWorktree.path, "Parallel integration task");
 
+    await waitForAutomaticTagComparison(gitSidebar);
+    gitTreeRefreshTargets.length = 0;
     await gitSidebar.compareRemoteTags(repository.rootUri);
     assert.equal(
       gitTreeRefreshTargets.at(-1),
@@ -229,21 +306,19 @@ export async function run(): Promise<void> {
         ),
       "VS Code Git did not report the untracked integration change.",
     );
-    const unstagedGroup = changesSidebar
-      .getChildren()
-      .find(
-        (sidebarNode) => sidebarNode.nodeType === "group" && sidebarNode.groupKind === "unstaged",
-      );
-    assert.ok(unstagedGroup);
-    const untrackedChangeNode = changesSidebar
-      .getChildren(unstagedGroup)
-      .find(
-        (sidebarNode) =>
-          sidebarNode.nodeType === "change" &&
-          pathsIdentifySameLocation(sidebarNode.change.uri.fsPath, integrationChangeUri.fsPath),
-      );
-    assert.ok(untrackedChangeNode);
-    await changesSidebar.runChangeAction("stage", untrackedChangeNode);
+    await waitForCommitState(
+      postedCommitMessages,
+      (commitState) => commitStateContainsChange(commitState, "unstaged", integrationChangeUri.fsPath),
+    );
+    commitMessageEmitter.fire({
+      action: "stage",
+      filePath: integrationChangeUri.fsPath,
+      groupKind: "unstaged",
+      repositoryPath: repository.rootUri.fsPath,
+      type: "changeAction",
+    });
+    const stageStatus = await waitForCommitActionStatus(postedCommitMessages);
+    assert.equal(stageStatus.message, undefined);
     await waitForRepositoryState(
       () =>
         repository.state.indexChanges.some((change) =>
@@ -251,21 +326,19 @@ export async function run(): Promise<void> {
         ),
       "VS Code Git did not stage the requested integration change.",
     );
-    const stagedGroup = changesSidebar
-      .getChildren()
-      .find(
-        (sidebarNode) => sidebarNode.nodeType === "group" && sidebarNode.groupKind === "staged",
-      );
-    assert.ok(stagedGroup);
-    const stagedChangeNode = changesSidebar
-      .getChildren(stagedGroup)
-      .find(
-        (sidebarNode) =>
-          sidebarNode.nodeType === "change" &&
-          pathsIdentifySameLocation(sidebarNode.change.uri.fsPath, integrationChangeUri.fsPath),
-      );
-    assert.ok(stagedChangeNode);
-    await changesSidebar.runChangeAction("unstage", stagedChangeNode);
+    await waitForCommitState(
+      postedCommitMessages,
+      (commitState) => commitStateContainsChange(commitState, "staged", integrationChangeUri.fsPath),
+    );
+    commitMessageEmitter.fire({
+      action: "unstage",
+      filePath: integrationChangeUri.fsPath,
+      groupKind: "staged",
+      repositoryPath: repository.rootUri.fsPath,
+      type: "changeAction",
+    });
+    const unstageStatus = await waitForCommitActionStatus(postedCommitMessages, stageStatus);
+    assert.equal(unstageStatus.message, undefined);
     await waitForRepositoryState(
       () =>
         [...repository.state.workingTreeChanges, ...repository.state.untrackedChanges].some((change) =>
@@ -277,9 +350,59 @@ export async function run(): Promise<void> {
     graphView.resolveWebviewView(testWebviewView);
     messageEmitter.fire({ type: "ready" });
     const deliveredGraphState = await waitForGraphState(postedGraphMessages);
+    assert.equal(
+      deliveredGraphState.repositoryName,
+      undefined,
+      "The graph must not repeat repository context already shown by Git'o.",
+    );
     assert.deepEqual(
       deliveredGraphState.rows?.slice(0, 2).map((graphRow) => graphRow.subject),
       ["test: second history entry", "test: first history entry"],
+    );
+    const selectedCommitHash = deliveredGraphState.rows?.[1]?.hash;
+    assert.ok(selectedCommitHash);
+    messageEmitter.fire({
+      commitHash: selectedCommitHash,
+      repositoryPath: repository.rootUri.fsPath,
+      type: "selectCommit",
+    });
+    const commitActionsMessage = await waitForGraphMessage(
+      postedGraphMessages,
+      (graphMessage) =>
+        graphMessage.type === "commitActions" && graphMessage.commitHash === selectedCommitHash,
+    );
+    assert.equal(
+      commitActionsMessage.actions?.find(({ id }) => id === "compareWithHead")?.disabledReason,
+      undefined,
+    );
+    messageEmitter.fire({
+      repositoryPath: repository.rootUri.fsPath,
+      type: "previewSync",
+    });
+    const syncPreviewMessage = await waitForGraphMessage(
+      postedGraphMessages,
+      (graphMessage) => graphMessage.type === "syncPreview",
+    );
+    assert.deepEqual(syncPreviewMessage.syncPreview, {
+      conflictRisk: "none",
+      incomingChangedPaths: [],
+      incomingCommitCount: 0,
+      outgoingChangedPaths: [],
+      outgoingCommitCount: 0,
+      upstreamName: "origin/main",
+      workingTreeClean: false,
+    });
+    const worktreeMessage = await waitForGraphMessage(
+      postedGraphMessages,
+      (graphMessage) => graphMessage.type === "worktrees",
+    );
+    assert.equal(
+      worktreeMessage.worktrees?.some(
+        (worktreeState) =>
+          worktreeState.displayName === "Parallel integration task" &&
+          worktreeState.summary === "1 untracked",
+      ),
+      true,
     );
     messageEmitter.fire({ searchText: "message:first", type: "search" });
     messageEmitter.fire({ searchText: "message:second", type: "search" });
@@ -322,24 +445,20 @@ export async function run(): Promise<void> {
       () => repository.state.mergeChanges.length === 1,
       "VS Code Git did not report the merge conflict.",
     );
-    const conflictGroupNode = changesSidebar
-      .getChildren()
-      .find(
-        (sidebarNode) => sidebarNode.nodeType === "group" && sidebarNode.groupKind === "conflicts",
-      );
+    const conflictGroupNode = workingTreeChanges
+      .getGroups()
+      .find((changeGroup) => changeGroup.groupKind === "conflicts");
     assert.ok(conflictGroupNode);
-    assert.equal(changesSidebar.getTreeItem(conflictGroupNode).label, "Resolve Conflicts");
-    const [mergeConflictNode] = changesSidebar.getChildren(conflictGroupNode);
-    assert.equal(mergeConflictNode?.nodeType, "change");
-    if (mergeConflictNode?.nodeType !== "change") {
+    await waitForCommitState(
+      postedCommitMessages,
+      (commitState) => commitStateContainsChange(commitState, "conflicts", mergeConflictUri.fsPath),
+    );
+    const [mergeConflictNode] = workingTreeChanges.getChanges(conflictGroupNode);
+    if (mergeConflictNode === undefined) {
       throw new Error("Git'o did not expose the merge conflict file.");
     }
     assert.equal(mergeConflictNode.changePosition, 1);
     assert.equal(mergeConflictNode.changeCount, 1);
-    assert.equal(
-      changesSidebar.getTreeItem(mergeConflictNode).command?.command,
-      "gito.resolveConflict",
-    );
     const mergeConflictPresentation = createConflictGuidePresentation(
       await inspectConflictContext(repository),
     );
@@ -374,7 +493,7 @@ export async function run(): Promise<void> {
       }
     } finally {
       gitSidebar.dispose();
-      changesSidebar.dispose();
+      commitView.dispose();
       gitTreeRefreshSubscription.dispose();
       graphView.dispose();
       worktrees.dispose();
@@ -383,6 +502,8 @@ export async function run(): Promise<void> {
       messageEmitter.dispose();
       disposalEmitter.dispose();
       visibilityEmitter.dispose();
+      commitMessageEmitter.dispose();
+      commitDisposalEmitter.dispose();
     }
   }
 }
@@ -445,6 +566,67 @@ async function waitForGraphState(
   throw new Error("Graph webview did not receive history within 15 seconds.");
 }
 
+async function waitForGraphMessage(
+  postedGraphMessages: readonly PostedGraphMessage[],
+  graphMessageMatches: (graphMessage: PostedGraphMessage) => boolean,
+): Promise<PostedGraphMessage> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const graphMessage = postedGraphMessages.findLast(graphMessageMatches);
+    if (graphMessage !== undefined) return graphMessage;
+    await delay(25);
+  }
+  throw new Error("Graph webview did not receive the expected interaction within 15 seconds.");
+}
+
+async function waitForCommitState(
+  postedCommitMessages: readonly PostedCommitMessage[],
+  commitStateMatches: (commitState: PostedCommitMessage) => boolean,
+): Promise<PostedCommitMessage> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const commitState = postedCommitMessages.findLast(
+      (postedCommitMessage) =>
+        postedCommitMessage.type === "state" && commitStateMatches(postedCommitMessage),
+    );
+    if (commitState !== undefined) return commitState;
+    await delay(25);
+  }
+  throw new Error("Combined Changes webview did not receive working tree state within 15 seconds.");
+}
+
+async function waitForCommitActionStatus(
+  postedCommitMessages: readonly PostedCommitMessage[],
+  previousStatus?: PostedCommitMessage,
+): Promise<PostedCommitMessage> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const commitActionStatus = postedCommitMessages.findLast(
+      (postedCommitMessage) =>
+        postedCommitMessage.type === "changeStatus" &&
+        postedCommitMessage.completed === true &&
+        postedCommitMessage !== previousStatus,
+    );
+    if (commitActionStatus !== undefined) return commitActionStatus;
+    await delay(25);
+  }
+  throw new Error("Combined Changes webview action did not complete within 15 seconds.");
+}
+
+function commitStateContainsChange(
+  commitState: PostedCommitMessage,
+  groupKind: string,
+  expectedFilePath: string,
+): boolean {
+  return commitState.changeGroups?.some(
+    (changeGroup) =>
+      changeGroup.groupKind === groupKind &&
+      changeGroup.changes.some((change) =>
+        pathsIdentifySameLocation(change.filePath, expectedFilePath),
+      ),
+  ) ?? false;
+}
+
 async function waitForRepositoryState(
   repositoryStateMatches: () => boolean,
   timeoutMessage: string,
@@ -457,6 +639,29 @@ async function waitForRepositoryState(
     await delay(100);
   }
   throw new Error(timeoutMessage);
+}
+
+async function waitForAutomaticTagComparison(gitSidebar: GitSidebar): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const repositoryNode = (await gitSidebar.getChildren()).find(
+      (sidebarNode) => sidebarNode.nodeType === "repository",
+    );
+    if (repositoryNode !== undefined) {
+      const tagGroupNode = (await gitSidebar.getChildren(repositoryNode)).find(
+        (sidebarNode) =>
+          sidebarNode.nodeType === "referenceGroup" && sidebarNode.referenceType === "tag",
+      );
+      if (
+        tagGroupNode !== undefined &&
+        gitSidebar.getTreeItem(tagGroupNode).description === "origin checked"
+      ) {
+        return;
+      }
+    }
+    await delay(100);
+  }
+  throw new Error("Git'o did not compare tags with the default remote automatically.");
 }
 
 function delay(delayMilliseconds: number): Promise<void> {

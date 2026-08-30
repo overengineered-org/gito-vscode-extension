@@ -37,11 +37,16 @@ interface ExtensionManifest {
   };
   readonly extensionDependencies: readonly string[];
   readonly extensionKind: readonly string[];
+  readonly scripts: Readonly<Record<string, string>>;
 }
 
 const extensionManifest = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as ExtensionManifest;
+
+test("rebuilds the extension before packaging", () => {
+  assert.equal(extensionManifest.scripts["vscode:prepublish"], "npm run build");
+});
 
 test("ships one desktop path backed by VS Code Git", () => {
   assert.equal(extensionManifest.browser, undefined);
@@ -57,13 +62,6 @@ test("ships one desktop path backed by VS Code Git", () => {
     ),
     [
       "gito.compareRemoteTags",
-      "gito.stageChange",
-      "gito.unstageChange",
-      "gito.discardChange",
-      "gito.stageGroup",
-      "gito.unstageGroup",
-      "gito.resolveConflict",
-      "gito.toggleCommitDiffLayout",
       "gito.showFileHistory",
       "gito.showCurrentLineBlame",
       "gito.refreshGit",
@@ -75,11 +73,6 @@ test("ships one desktop path backed by VS Code Git", () => {
     ],
   );
   assert.deepEqual(extensionManifest.contributes.menus?.["editor/title"], [
-    {
-      command: "gito.toggleCommitDiffLayout",
-      group: "navigation@10",
-      when: "activeEditor == multiDiffEditor",
-    },
     {
       command: "gito.showFileHistory",
       group: "navigation@20",
@@ -101,36 +94,6 @@ test("ships one desktop path backed by VS Code Git", () => {
     },
   ]);
   assert.deepEqual(extensionManifest.contributes.menus?.["view/item/context"], [
-    {
-      command: "gito.stageChange",
-      group: "inline",
-      when: "view == gito.changes && viewItem == gito.change.unstaged",
-    },
-    {
-      command: "gito.unstageChange",
-      group: "inline",
-      when: "view == gito.changes && viewItem == gito.change.staged",
-    },
-    {
-      command: "gito.discardChange",
-      group: "navigation",
-      when: "view == gito.changes && viewItem == gito.change.unstaged",
-    },
-    {
-      command: "gito.stageGroup",
-      group: "inline",
-      when: "view == gito.changes && viewItem == gito.group.unstaged",
-    },
-    {
-      command: "gito.resolveConflict",
-      group: "inline",
-      when: "view == gito.changes && viewItem == gito.change.conflicts",
-    },
-    {
-      command: "gito.unstageGroup",
-      group: "inline",
-      when: "view == gito.changes && viewItem == gito.group.staged",
-    },
     {
       command: "gito.openWorktreeInNewWindow",
       group: "inline",
@@ -182,8 +145,7 @@ test("ships one desktop path backed by VS Code Git", () => {
   );
   assert.deepEqual(extensionManifest.contributes.views.gito, [
     { id: "gito.git", name: "Git" },
-    { id: "gito.commit", name: "Commit", type: "webview", visibility: "visible" },
-    { id: "gito.changes", name: "Changes", visibility: "visible" },
+    { id: "gito.commit", name: "Changes", type: "webview", visibility: "visible" },
     { id: "gito.graph", name: "Graph", type: "webview", visibility: "visible" },
   ]);
   assert.deepEqual(extensionManifest.contributes.viewsWelcome, [

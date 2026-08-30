@@ -60,7 +60,7 @@ export interface RepositoryChangeCollections {
   readonly workingTreeChanges: readonly unknown[];
 }
 
-export type TagSyncStatus = "conflict" | "localOnly" | "remoteOnly" | "synced" | "unchecked";
+type TagSyncStatus = "conflict" | "localOnly" | "remoteOnly" | "synced" | "unchecked";
 
 export interface TagAvailability {
   readonly availableLocally: boolean;

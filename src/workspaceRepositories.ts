@@ -34,7 +34,9 @@ export class WorkspaceRepositories implements vscode.Disposable {
     const workspaceRepositories = this.repositories;
     return (
       workspaceRepositories.find(
-        (repository) => repository.rootUri.fsPath === this.selectedRepositoryPath,
+        (repository) =>
+          this.selectedRepositoryPath !== undefined &&
+          pathsIdentifySameLocation(repository.rootUri.fsPath, this.selectedRepositoryPath),
       ) ??
       workspaceRepositories.find((repository) => repository.ui.selected) ??
       workspaceRepositories[0]
@@ -64,8 +66,11 @@ export class WorkspaceRepositories implements vscode.Disposable {
 
   public selectRepository(repositoryPath: string): void {
     if (
-      repositoryPath === this.selectedRepositoryPath ||
-      !this.repositories.some((repository) => repository.rootUri.fsPath === repositoryPath)
+      (this.selectedRepositoryPath !== undefined &&
+        pathsIdentifySameLocation(repositoryPath, this.selectedRepositoryPath)) ||
+      !this.repositories.some((repository) =>
+        pathsIdentifySameLocation(repository.rootUri.fsPath, repositoryPath),
+      )
     ) {
       return;
     }
@@ -86,7 +91,9 @@ export class WorkspaceRepositories implements vscode.Disposable {
     if (
       this.selectedRepositoryPath !== undefined &&
       ![...workspaceRepositories].some(
-        (repository) => repository.rootUri.fsPath === this.selectedRepositoryPath,
+        (repository) =>
+          this.selectedRepositoryPath !== undefined &&
+          pathsIdentifySameLocation(repository.rootUri.fsPath, this.selectedRepositoryPath),
       )
     ) {
       this.selectedRepositoryPath = undefined;
