@@ -60,11 +60,21 @@ Git'o uses VS Code's bundled Git API for standard operations and credentials. Co
 
 Linked worktrees default to `.gito-worktrees/<repository>/<worktree>` beside the primary checkout, never inside it. Set `gito.worktrees.storageRoot` to an absolute path or a `~` path to keep every repository's worktrees under one global folder. Git'o stores custom worktree labels locally in VS Code; labels do not rename branches or folders.
 
-## Validate
+## Validate changes
 
 ```sh
-npm run check
+npm run verify:local
 ```
+
+This is the complete pull-request gate: reusable pinned ACT validation on Linux, stable and minimum VS Code tests against the exact VSIX, CodeQL, both dependency audits, native macOS package testing, Gitleaks, and release versioning. It prunes only dangling Docker images.
+
+After pushing the exact clean commit and opening a conventionally titled pull request:
+
+```sh
+npm run verify:local:report
+```
+
+That posts one required `Local validation` status. Normal pushes and pull requests do not consume GitHub-hosted workflow minutes. See [CONTRIBUTING.md](CONTRIBUTING.md) and [the architecture](docs/ARCHITECTURE.md).
 
 For a repeatable local product benchmark against a generated 100-commit repository:
 
@@ -72,7 +82,7 @@ For a repeatable local product benchmark against a generated 100-commit reposito
 npm run benchmark:product
 ```
 
-Release budgets: full-history search under 2 seconds, visual file history under 2 seconds, and linked-worktree WIP under 1 second. The normal `check` gate runs this benchmark.
+Release budgets: full-history search under 2 seconds, visual file history under 2 seconds, and linked-worktree WIP under 1 second. The local gate runs this benchmark.
 
 ## Current boundary
 

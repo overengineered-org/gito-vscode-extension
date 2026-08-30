@@ -9,6 +9,13 @@
     "type": "git",
     "url": "https://github.com/overengineered-org/gito-vscode-extension.git"
   },
+  "author": {
+    "name": "Overengineered Org"
+  },
+  "homepage": "https://github.com/overengineered-org/gito-vscode-extension#readme",
+  "bugs": {
+    "url": "https://github.com/overengineered-org/gito-vscode-extension/issues"
+  },
   "type": "module",
   "engines": {
     "vscode": "^1.134.0"
@@ -17,6 +24,15 @@
     "SCM Providers"
   ],
   "main": "./dist/extension.cjs",
+  "files": [
+    "dist/extension.cjs",
+    "media/gito.svg",
+    "media/onboarding/*.svg",
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs/ARCHITECTURE.md",
+    "LICENSE"
+  ],
   "extensionKind": [
     "workspace",
     "ui"
@@ -280,20 +296,36 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run build",
+    "audit:production": "npm audit --omit=dev",
+    "clean": "node scripts/clean.mjs",
+    "vscode:prepublish": "npm run verify:static",
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.cjs",
     "build:integration": "esbuild test/integration/suite.ts --bundle --platform=node --format=cjs --external:vscode --outfile=.integration-test/suite.cjs",
     "benchmark:product": "node test/runProductBenchmark.mjs",
-    "check": "npm run typecheck && npm test && npm run benchmark:product && npm run build && npm run test:integration",
-    "test": "node --test test/*.test.ts",
+    "check": "npm run verify:static && npm run test:integration",
+    "package:verify": "node scripts/validate-package-contents.mjs",
+    "package:vsix": "vsce package --no-dependencies --out dist/gito.vsix",
+    "release": "release-it --ci",
+    "test": "node --test test/*.test.ts test/*.test.mjs",
     "test:integration": "npm run build:integration && node test/runIntegration.mjs",
-    "typecheck": "tsc --noEmit"
+    "test:integration:vsix": "npm run build:integration && node scripts/run-vsix-integration.mjs",
+    "test:release-package": "node --test test/releasePackage.contract.mjs",
+    "typecheck": "tsc --noEmit",
+    "verify:local": "./scripts/verify-local.sh",
+    "verify:local:report": "./scripts/verify-local.sh --report-status",
+    "verify:static": "npm run clean && npm run typecheck && npm test && npm run benchmark:product && npm run build"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
+    "@release-it/conventional-changelog": "12.0.0",
+    "@types/node": "^24.13.3",
     "@types/vscode": "^1.134.0",
     "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "3.9.2",
+    "conventional-changelog-conventionalcommits": "10.4.0",
+    "conventional-recommended-bump": "12.1.0",
     "esbuild": "^0.28.2",
+    "jszip": "3.10.1",
+    "release-it": "21.0.2",
     "typescript": "^7.0.2"
   }
 }

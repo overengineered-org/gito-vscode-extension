@@ -57,8 +57,12 @@ const extensionManifest = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as ExtensionManifest;
 
-test("rebuilds the extension before packaging", () => {
-  assert.equal(extensionManifest.scripts["vscode:prepublish"], "npm run build");
+test("runs complete static validation before packaging", () => {
+  assert.equal(extensionManifest.scripts["vscode:prepublish"], "npm run verify:static");
+  assert.equal(
+    extensionManifest.scripts["verify:static"],
+    "npm run clean && npm run typecheck && npm test && npm run benchmark:product && npm run build",
+  );
 });
 
 test("ships one desktop path backed by VS Code Git", () => {

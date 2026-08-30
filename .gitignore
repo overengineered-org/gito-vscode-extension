@@ -1,5 +1,6 @@
 dist/
 .integration-test/
 .vscode-test/
+.codeql-results/
 node_modules/
 *.vsix

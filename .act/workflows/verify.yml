@@ -1,0 +1,75 @@
+name: Local validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-validation:
+    name: Linux, CodeQL, and package validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version: 24.14.0
+      - name: Install dependencies
+        run: npm ci
+      - name: Install VS Code Linux dependencies once
+        run: |
+          required_vscode_package_names=(
+            libasound2t64
+            libatk-bridge2.0-0t64
+            libatk1.0-0t64
+            libatspi2.0-0t64
+            libcups2t64
+            libgtk-3-0t64
+            libnspr4
+            libnss3
+            libxcomposite1
+            libxdamage1
+            libxfixes3
+            libxkbcommon0
+            xvfb
+          )
+          missing_vscode_package_names=()
+          for required_vscode_package_name in "${required_vscode_package_names[@]}"; do
+            if ! dpkg-query --show "$required_vscode_package_name" >/dev/null 2>&1; then
+              missing_vscode_package_names+=("$required_vscode_package_name")
+            fi
+          done
+          if [[ "${#missing_vscode_package_names[@]}" -gt 0 ]]; then
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install --yes "${missing_vscode_package_names[@]}"
+          fi
+      - name: Build exact local VSIX
+        run: npm run package:vsix
+      - name: Verify package contents
+        run: npm run package:verify
+      - name: Test stable VS Code on Linux
+        run: xvfb-run --auto-servernum npm run test:integration:vsix
+      - name: Test minimum VS Code on Linux
+        env:
+          GITO_VSCODE_VERSION: 1.134.0
+        run: xvfb-run --auto-servernum npm run test:integration:vsix
+      - name: Verify release package contract
+        run: npm run test:release-package
+      - name: Audit production dependencies
+        run: npm run audit:production
+      - name: Audit all dependencies
+        run: npm audit
+      - name: Install pinned CodeQL bundle
+        id: install-codeql
+        env:
+          CODEQL_INSTALLATION_ROOT: /opt/codeql-cache
+        run: scripts/install-codeql.sh
+      - name: Analyze actions and TypeScript
+        env:
+          CODEQL_ANALYSIS_DIRECTORY: ${{ runner.temp }}/gito-codeql-analysis
+          CODEQL_BINARY_PATH: ${{ steps.install-codeql.outputs.binary_path }}
+          CODEQL_RESULTS_DIRECTORY: ${{ runner.temp }}/gito-codeql-results
+        run: scripts/run-codeql-analysis.sh
