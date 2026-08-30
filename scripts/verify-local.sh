@@ -45,11 +45,15 @@ bash "$local_node_environment" npm run package:vsix
 bash "$local_node_environment" npm run package:verify
 bash "$local_node_environment" npm run test:integration:vsix
 bash "${project_worktree_root}/scripts/secret-scan.sh"
+readonly proposed_release_version="$(
+  bash "$local_node_environment" node scripts/resolve-release-version.mjs patch
+)"
 bash "$local_node_environment" npx --no-install release-it \
-  patch \
+  "$proposed_release_version" \
   --release-version \
   --no-git.requireBranch \
   --no-git.requireCleanWorkingDir \
+  --no-git.requireUpstream \
   --no-git.push \
   --no-github.release
 
