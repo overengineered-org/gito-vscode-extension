@@ -7,12 +7,20 @@ const localWorkflow = readFileSync(".act/workflows/verify.yml", "utf8");
 const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
 const localVerificationScript = readFileSync("scripts/verify-local.sh", "utf8");
 const packagedIntegrationRunner = readFileSync("scripts/run-vsix-integration.mjs", "utf8");
+const developmentIntegrationRunner = readFileSync("test/runIntegration.mjs", "utf8");
+const integrationHostConfiguration = readFileSync("test/integrationHost.mjs", "utf8");
 
 test("keeps pull-request validation local and release execution explicit", () => {
   assert.deepEqual(readdirSync(".github/workflows").sort(), ["release.yml"]);
   assert.match(releaseWorkflow, /on:\n  workflow_dispatch:/);
   assert.doesNotMatch(releaseWorkflow, /\n  (pull_request|push|schedule):/);
   assert.match(releaseWorkflow, /commit_sha:/);
+  assert.match(releaseWorkflow, /release_increment:/);
+  assert.match(releaseWorkflow, /type: choice/);
+  for (const releaseIncrement of ["patch", "minor", "major"]) {
+    assert.match(releaseWorkflow, new RegExp(`- ${releaseIncrement}`));
+  }
+  assert.match(releaseWorkflow, /RELEASE_INCREMENT: \$\{\{ inputs\.release_increment \}\}/);
   assert.match(releaseWorkflow, /\^\[0-9a-f\]\{40\}\$/);
   assert.equal((releaseWorkflow.match(/git rev-parse origin\/main/g) ?? []).length, 5);
 });
@@ -44,10 +52,15 @@ test("validates the exact VSIX across Linux and native release hosts", () => {
   assert.doesNotMatch(releaseWorkflow, /npm ci --ignore-scripts/);
   assert.match(localVerificationScript, /npm run test:integration:vsix/);
   assert.match(localVerificationScript, /scripts\/secret-scan\.sh/);
-  assert.match(localVerificationScript, /resolve-release-version\.mjs/);
+  assert.match(localVerificationScript, /release-it \\\n  patch \\\n  --release-version/);
   assert.match(localVerificationScript, /release-it/);
   assert.match(packagedIntegrationRunner, /--install-extension/);
   assert.doesNotMatch(packagedIntegrationRunner, /--disable-extensions/);
+  assert.match(integrationHostConfiguration, /--use-inmemory-secretstorage/);
+  assert.match(integrationHostConfiguration, /"chat\.disableAIFeatures": true/);
+  assert.match(developmentIntegrationRunner, /initializeIsolatedUserData/);
+  assert.match(packagedIntegrationRunner, /initializeIsolatedUserData/);
+  assert.doesNotMatch(developmentIntegrationRunner, /--disable-extensions/);
 });
 
 test("reuses tested bytes through release and protected publication", () => {
@@ -57,7 +70,10 @@ test("reuses tested bytes through release and protected publication", () => {
   }
   assert.match(releaseWorkflow, /name: validated-vsix/g);
   assert.match(releaseWorkflow, /sha256sum --check/);
-  assert.match(releaseWorkflow, /node scripts\/resolve-release-version\.mjs/);
+  assert.match(
+    releaseWorkflow,
+    /release-it "\$RELEASE_INCREMENT" --release-version --no-git\.push --no-github\.release/,
+  );
   assert.match(releaseWorkflow, /npm run release -- "\$RELEASE_VERSION"/);
   assert.match(releaseWorkflow, /environment: marketplace-production/);
   assert.match(releaseWorkflow, /VSCE_PAT: \$\{\{ secrets\.VSCE_PAT \}\}/);

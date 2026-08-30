@@ -2,6 +2,7 @@
   "name": "gito",
   "displayName": "Git'o",
   "description": "Work with repositories, worktrees, branches, tags, and commits from a focused Git sidebar.",
+  "icon": "media/gito-icon.png",
   "version": "0.8.10",
   "publisher": "overengineered-org",
   "license": "MIT",
@@ -23,9 +24,25 @@
   "categories": [
     "SCM Providers"
   ],
+  "keywords": [
+    "git",
+    "source control",
+    "branches",
+    "tags",
+    "worktrees",
+    "history",
+    "blame",
+    "merge conflicts"
+  ],
+  "galleryBanner": {
+    "color": "#2E0854",
+    "theme": "dark"
+  },
+  "pricing": "Free",
   "main": "./dist/extension.cjs",
   "files": [
     "dist/extension.cjs",
+    "media/gito-icon.png",
     "media/gito.svg",
     "media/onboarding/*.svg",
     "README.md",
@@ -108,6 +125,11 @@
         "icon": "$(eye)"
       },
       {
+        "command": "gito.toggleDiffLayout",
+        "title": "Git'o: Toggle Inline / Side-by-Side Diff",
+        "icon": "$(diff)"
+      },
+      {
         "command": "gito.createWorktree",
         "title": "Git'o: Create Feature Worktree",
         "icon": "$(add)"
@@ -148,6 +170,11 @@
         }
       ],
       "editor/title": [
+        {
+          "command": "gito.toggleDiffLayout",
+          "when": "activeEditor == multiDiffEditor",
+          "group": "navigation@10"
+        },
         {
           "command": "gito.showFileHistory",
           "when": "resourceScheme == file && activeEditor != multiDiffEditor",
@@ -249,7 +276,7 @@
           {
             "id": "gito.gettingStarted.fileContext",
             "title": "Trace a file or line",
-            "description": "Use focused file history when repository history is too broad. Inspect the author, age, summary, and commit behind the active line without leaving the editor.\n[Show file history](command:gito.showFileHistory) · [Show current line details](command:gito.showCurrentLineBlame)",
+            "description": "First focus a tracked repository file and place the cursor on a line. Git'o remembers that file and line when you return to this tour.\n[Show history for that file](command:gito.showFileHistory) · [Show details for that line](command:gito.showCurrentLineBlame)",
             "media": {
               "image": "media/onboarding/file-context.svg",
               "altText": "Editor with current-line authorship beside a focused file-history timeline"
@@ -307,7 +334,7 @@
     "package:vsix": "vsce package --no-dependencies --out dist/gito.vsix",
     "release": "release-it --ci",
     "test": "node --test test/*.test.ts test/*.test.mjs",
-    "test:integration": "npm run build:integration && node test/runIntegration.mjs",
+    "test:integration": "npm run build && npm run build:integration && node test/runIntegration.mjs",
     "test:integration:vsix": "npm run build:integration && node scripts/run-vsix-integration.mjs",
     "test:release-package": "node --test test/releasePackage.contract.mjs",
     "typecheck": "tsc --noEmit",
@@ -322,7 +349,6 @@
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "3.9.2",
     "conventional-changelog-conventionalcommits": "10.4.0",
-    "conventional-recommended-bump": "12.1.0",
     "esbuild": "^0.28.2",
     "jszip": "3.10.1",
     "release-it": "21.0.2",

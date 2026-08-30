@@ -7,6 +7,15 @@ on:
         description: Exact 40-character SHA currently at main
         required: true
         type: string
+      release_increment:
+        description: Semantic version increment
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: read
@@ -63,8 +72,10 @@ jobs:
         run: npm ci
       - name: Resolve release version
         id: resolve-release-version
+        env:
+          RELEASE_INCREMENT: ${{ inputs.release_increment }}
         run: |
-          release_version="$(node scripts/resolve-release-version.mjs)"
+          release_version="$(npx --no-install release-it "$RELEASE_INCREMENT" --release-version --no-git.push --no-github.release)"
           echo "version=$release_version" >> "$GITHUB_OUTPUT"
       - name: Build exact versioned VSIX
         env:

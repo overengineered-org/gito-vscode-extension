@@ -1,0 +1,9 @@
+[user]
+	name = Repository Maintainer
+	email = repository-maintainer@overengineered.invalid
+[credential]
+	helper =
+[commit]
+	gpgSign = false
+[tag]
+	gpgSign = false

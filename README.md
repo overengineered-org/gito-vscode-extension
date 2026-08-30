@@ -4,6 +4,8 @@ Native VS Code sidebar for local Git repositories, worktrees, branches, tags, ch
 
 Desktop VS Code only. Git'o runs beside the repository and requires VS Code's built-in Git extension.
 
+[Get support](SUPPORT.md) · [Report a vulnerability](SECURITY.md) · [Contribute](CONTRIBUTING.md)
+
 ## What works
 
 - Clone through VS Code's built-in `Git: Clone` flow.
@@ -40,15 +42,18 @@ VS Code opens Git'o's native **Get started with Git'o** walkthrough after instal
 
 Git'o opens this walkthrough as a full editor tab the first time the extension starts. Run **Git'o: Open Getting Started** from the Command Palette or choose **?** in the Git view to reopen it later.
 
+For **Trace a file or line**, focus any tracked file and place the cursor on the line you want. Return to the walkthrough: both links remember and use that file context.
+
 ## Explore the Graph
 
 Open a local repository, choose **Git'o** in the Activity Bar, then expand **Graph**.
 
 1. Click a commit to inspect its changed files and diff in one reusable tab.
-2. Hover a commit and choose **•••** to compare it, copy its hash, create a branch or local tag, inspect it detached, apply or revert it, move the current branch, or undo HEAD while keeping changes.
-3. Search repository history with text or `author:`, `message:`, `ref:`, and `file:` filters. Choose **Load 50 more** to page through older commits.
-4. Choose **Sync · _upstream_** to preview incoming and outgoing commits, changed paths, and predicted conflicts before Pull or Push.
-5. Right-click a file and choose **Git'o: Show File History**. Linked worktrees appear above the graph with their branch and clean, WIP, or conflict state.
+2. Use **Git'o: Toggle Inline / Side-by-Side Diff** in that tab to change layout in place. VS Code's **Split Editor Right** button intentionally opens a second editor group.
+3. Hover a commit and choose **•••** to compare it, copy its hash, create a branch or local tag, inspect it detached, apply or revert it, move the current branch, or undo HEAD while keeping changes.
+4. Search repository history with text or `author:`, `message:`, `ref:`, and `file:` filters. Choose **Load 50 more** to page through older commits.
+5. Choose **Sync · _upstream_** to preview incoming and outgoing commits, changed paths, and predicted conflicts before Pull or Push.
+6. Right-click a file and choose **Git'o: Show File History**. Linked worktrees appear above the graph with their branch and clean, WIP, or conflict state.
 
 Potentially destructive graph actions require confirmation. Actions that need a clean working tree remain unavailable until changes are committed, stashed, or discarded.
 
@@ -68,6 +73,12 @@ npm run verify:local
 
 This is the complete pull-request gate: reusable pinned ACT validation on Linux, stable and minimum VS Code tests against the exact VSIX, CodeQL, both dependency audits, native macOS package testing, Gitleaks, and release versioning. It prunes only dangling Docker images.
 
+Codex actions use the repository-local **gito-sanitized-local** environment. It replaces inherited Git identity, npm/GitHub CLI credential locations, home/cache paths, tokens, and SSH-agent access before running project commands. Run **Bootstrap** from Codex environments or:
+
+```sh
+bash .codex/environments/setup.sh
+```
+
 After pushing the exact clean commit and opening a conventionally titled pull request:
 
 ```sh
@@ -83,6 +94,12 @@ npm run benchmark:product
 ```
 
 Release budgets: full-history search under 2 seconds, visual file history under 2 seconds, and linked-worktree WIP under 1 second. The local gate runs this benchmark.
+
+## Publish a release
+
+After a pull request is squash-merged, open GitHub Actions → **Release** → **Run workflow**. Enter the exact 40-character SHA currently at `main`, then choose `patch`, `minor`, or `major`.
+
+The workflow builds one versioned VSIX, verifies the exact bytes on Linux, macOS, Windows, and minimum VS Code, uploads CodeQL SARIF, creates a checksum-backed GitHub Release, then publishes those same bytes through the protected Marketplace environment. No release runs automatically on merge, and no Marketplace token belongs in the repository.
 
 ## Current boundary
 

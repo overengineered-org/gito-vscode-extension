@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose one user problem for Git'o to solve
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is difficult today? Describe the workflow, not another product.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Ideal outcome
+      description: What should become clearer, safer, or faster?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Sanitised context
+      description: Repository shape, worktree setup, or screenshots with private data removed.

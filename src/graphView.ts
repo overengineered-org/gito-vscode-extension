@@ -40,6 +40,7 @@ const graphPageSize = 50;
 const maximumGraphEntries = 500;
 
 export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable {
+  private readonly activeEditorSubscription: vscode.Disposable;
   private readonly changedSubscription: vscode.Disposable;
   private readonly graphActions: GraphActions;
   private readonly refreshRunner: CoalescedAsyncRunner;
@@ -55,6 +56,7 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
   private resolvedViewSubscriptions: vscode.Disposable | undefined;
   private searchText = "";
   private graphRequestVersion = 0;
+  private lastRepositoryFileUri: vscode.Uri | undefined;
   private refreshRequired = false;
   private scheduledRefresh: ReturnType<typeof setTimeout> | undefined;
   private webviewReady = false;
@@ -66,6 +68,10 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
     private readonly worktrees: Worktrees,
     private readonly diagnostics: vscode.LogOutputChannel,
   ) {
+    this.rememberRepositoryFile(vscode.window.activeTextEditor);
+    this.activeEditorSubscription = vscode.window.onDidChangeActiveTextEditor((activeEditor) => {
+      this.rememberRepositoryFile(activeEditor);
+    });
     this.graphActions = new GraphActions(gitApi, diagnostics);
     this.refreshRunner = new CoalescedAsyncRunner((forceRefresh) =>
       this.refresh(forceRefresh),
@@ -75,7 +81,8 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
   }
 
   public async showFileHistory(fileUri?: vscode.Uri): Promise<void> {
-    const targetFileUri = fileUri ?? vscode.window.activeTextEditor?.document.uri;
+    const targetFileUri =
+      fileUri ?? this.repositoryFileUri(vscode.window.activeTextEditor) ?? this.lastRepositoryFileUri;
     if (targetFileUri?.scheme !== "file") {
       void vscode.window.showInformationMessage("Git'o: Open a repository file first.");
       return;
@@ -125,6 +132,7 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
   }
 
   public dispose(): void {
+    this.activeEditorSubscription.dispose();
     this.changedSubscription.dispose();
     this.worktreeSubscription.dispose();
     this.resolvedViewSubscriptions?.dispose();
@@ -134,6 +142,18 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
     }
     this.webviewReady = false;
     this.webviewView = undefined;
+  }
+
+  private rememberRepositoryFile(activeEditor: vscode.TextEditor | undefined): void {
+    this.lastRepositoryFileUri = this.repositoryFileUri(activeEditor) ?? this.lastRepositoryFileUri;
+  }
+
+  private repositoryFileUri(activeEditor: vscode.TextEditor | undefined): vscode.Uri | undefined {
+    const activeFileUri = activeEditor?.document.uri;
+    return activeFileUri?.scheme === "file" &&
+      this.workspaceRepositories.findRepositoryContaining(activeFileUri.fsPath) !== undefined
+      ? activeFileUri
+      : undefined;
   }
 
   private async handleMessage(graphViewMessage: GraphViewMessage): Promise<void> {

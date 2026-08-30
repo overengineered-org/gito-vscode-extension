@@ -102,6 +102,7 @@ export interface GitApi {
   readonly onDidCloseRepository: vscode.Event<GitRepository>;
   readonly onDidOpenRepository: vscode.Event<GitRepository>;
   readonly repositories: readonly GitRepository[];
+  openRepository(repositoryRootUri: vscode.Uri): GitRepository | null;
 }
 
 export async function loadGitCommitsWithTimeout(

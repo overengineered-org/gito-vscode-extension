@@ -9,6 +9,10 @@ import {
 } from "@vscode/test-electron";
 
 import { createIntegrationFixture } from "../test/integrationFixture.mjs";
+import {
+  initializeIsolatedUserData,
+  isolatedHostLaunchArguments,
+} from "../test/integrationHost.mjs";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const distributionDirectory = resolve(repositoryRoot, "dist");
@@ -29,6 +33,7 @@ const extensionsDirectory = resolve(vscodeStateRoot, "extensions");
 const userDataDirectory = resolve(vscodeStateRoot, "user-data");
 
 try {
+  initializeIsolatedUserData(userDataDirectory);
   const vscodeExecutablePath = await downloadAndUnzipVSCode(vscodeVersion);
   await runVSCodeCommand(
     [
@@ -37,6 +42,7 @@ try {
       "--force",
       `--extensions-dir=${extensionsDirectory}`,
       `--user-data-dir=${userDataDirectory}`,
+      "--use-inmemory-secretstorage",
     ],
     { version: vscodeVersion },
   );
@@ -47,10 +53,7 @@ try {
       integrationFixture.workspaceRepositoryPath,
       `--extensions-dir=${extensionsDirectory}`,
       `--user-data-dir=${userDataDirectory}`,
-      "--disable-crash-reporter",
-      "--disable-telemetry",
-      "--disable-workspace-trust",
-      "--skip-welcome",
+      ...isolatedHostLaunchArguments,
     ],
     vscodeExecutablePath,
   });

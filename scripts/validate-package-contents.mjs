@@ -11,6 +11,7 @@ export const expectedPackagedFilePaths = [
   "extension/CONTRIBUTING.md",
   "extension/dist/extension.cjs",
   "extension/docs/ARCHITECTURE.md",
+  "extension/media/gito-icon.png",
   "extension/media/gito.svg",
   "extension/media/onboarding/changes.svg",
   "extension/media/onboarding/file-context.svg",
@@ -44,6 +45,7 @@ export async function validatePackageContents(extensionPackagePath) {
   if (
     extensionManifest.name !== "gito" ||
     extensionManifest.publisher !== "overengineered-org" ||
+    extensionManifest.icon !== "media/gito-icon.png" ||
     extensionManifest.main !== "./dist/extension.cjs"
   ) {
     throw new Error("The packaged extension identity or entry point is incorrect.");

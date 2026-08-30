@@ -19,9 +19,18 @@ interface CurrentLineContext {
   readonly repository: GitRepository;
 }
 
+interface RepositoryLineSelection {
+  readonly fileUri: vscode.Uri;
+  readonly lineNumber: number;
+  readonly repository: GitRepository;
+}
+
+export type CurrentLineDetailsOutcome = "details" | "missing";
+
 export class CurrentLineBlame implements vscode.Disposable {
   private currentLineContext: CurrentLineContext | undefined;
   private decoratedEditor: vscode.TextEditor | undefined;
+  private lastRepositoryLineSelection: RepositoryLineSelection | undefined;
   private readonly lineAnnotationDecoration = vscode.window.createTextEditorDecorationType({
     after: {
       color: new vscode.ThemeColor("editorCodeLens.foreground"),
@@ -45,9 +54,16 @@ export class CurrentLineBlame implements vscode.Disposable {
   ) {
     this.statusBarItem.name = "Git'o Line Blame";
     this.statusBarItem.command = "gito.showCurrentLineBlame";
+    this.rememberRepositoryLine(vscode.window.activeTextEditor);
     this.subscriptions = [
-      vscode.window.onDidChangeActiveTextEditor(() => this.scheduleRefresh(0)),
-      vscode.window.onDidChangeTextEditorSelection(() => this.scheduleRefresh()),
+      vscode.window.onDidChangeActiveTextEditor((activeEditor) => {
+        this.rememberRepositoryLine(activeEditor);
+        this.scheduleRefresh(0);
+      }),
+      vscode.window.onDidChangeTextEditorSelection((selectionChange) => {
+        this.rememberRepositoryLine(selectionChange.textEditor);
+        this.scheduleRefresh();
+      }),
       vscode.workspace.onDidChangeTextDocument((textDocumentChange) => {
         if (textDocumentChange.document === vscode.window.activeTextEditor?.document) {
           this.scheduleRefresh();
@@ -80,9 +96,28 @@ export class CurrentLineBlame implements vscode.Disposable {
     );
   }
 
-  public async showDetails(): Promise<void> {
-    const currentLineContext = this.currentLineContext;
-    if (currentLineContext === undefined) return;
+  public async showDetails(): Promise<CurrentLineDetailsOutcome> {
+    let currentLineContext = this.currentLineContext;
+    const lastRepositoryLineSelection = this.lastRepositoryLineSelection;
+    if (
+      lastRepositoryLineSelection !== undefined &&
+      (currentLineContext === undefined ||
+        currentLineContext.lineNumber !== lastRepositoryLineSelection.lineNumber ||
+        currentLineContext.fileUri.toString() !== lastRepositoryLineSelection.fileUri.toString())
+    ) {
+      try {
+        currentLineContext = await this.inspectRepositoryLine(lastRepositoryLineSelection);
+      } catch (lineInspectionFailure) {
+        currentLineContext = undefined;
+        this.diagnostics.debug("Remembered-line blame unavailable.", lineInspectionFailure);
+      }
+    }
+    if (currentLineContext === undefined) {
+      void vscode.window.showInformationMessage(
+        "Git'o: Open a tracked repository file and place the cursor on a line first.",
+      );
+      return "missing";
+    }
     const blameActions = currentLineContext.blame.commitHash === undefined
       ? [{ label: "$(history) Show File History", commandKind: "history" as const }]
       : [
@@ -111,6 +146,7 @@ export class CurrentLineBlame implements vscode.Disposable {
     ) {
       await vscode.env.clipboard.writeText(currentLineContext.blame.commitHash);
     }
+    return "details";
   }
 
   private scheduleRefresh(delayMilliseconds = 160): void {
@@ -140,29 +176,21 @@ export class CurrentLineBlame implements vscode.Disposable {
       return;
     }
     const lineNumber = activeEditor.selection.active.line + 1;
-    const filePath = relative(repository.rootUri.fsPath, activeEditor.document.uri.fsPath);
+    const repositoryLineSelection = {
+      fileUri: activeEditor.document.uri,
+      lineNumber,
+      repository,
+    };
+    this.lastRepositoryLineSelection = repositoryLineSelection;
     try {
-      const blamePorcelain = await runGitCommand(
-        {
-          environment: this.gitApi.git.env,
-          executablePath: this.gitApi.git.path,
-          repositoryPath: repository.rootUri.fsPath,
-        },
-        ["blame", "--line-porcelain", `-L${lineNumber},${lineNumber}`, "--", filePath],
-        5_000,
-      );
+      const inspectedLineContext = await this.inspectRepositoryLine(repositoryLineSelection);
       if (refreshGeneration !== this.refreshGeneration) return;
-      const lineBlame = parseLineBlame(blamePorcelain);
-      if (lineBlame === undefined) {
+      if (inspectedLineContext === undefined) {
         this.hide();
         return;
       }
-      this.currentLineContext = {
-        blame: lineBlame,
-        fileUri: activeEditor.document.uri,
-        lineNumber,
-        repository,
-      };
+      this.currentLineContext = inspectedLineContext;
+      const lineBlame = inspectedLineContext.blame;
       const blameAge = lineBlame.authoredAt === undefined ? "local" : formatBlameAge(lineBlame.authoredAt);
       this.statusBarItem.text = `$(git-commit) ${lineBlame.authorName} · ${blameAge}`;
       this.statusBarItem.tooltip = new vscode.MarkdownString(
@@ -174,6 +202,51 @@ export class CurrentLineBlame implements vscode.Disposable {
       if (refreshGeneration === this.refreshGeneration) this.hide();
       this.diagnostics.debug("Current-line blame unavailable.", blameFailure);
     }
+  }
+
+  private async inspectRepositoryLine(
+    repositoryLineSelection: RepositoryLineSelection,
+  ): Promise<CurrentLineContext | undefined> {
+    const filePath = relative(
+      repositoryLineSelection.repository.rootUri.fsPath,
+      repositoryLineSelection.fileUri.fsPath,
+    );
+    const blamePorcelain = await runGitCommand(
+      {
+        environment: this.gitApi.git.env,
+        executablePath: this.gitApi.git.path,
+        repositoryPath: repositoryLineSelection.repository.rootUri.fsPath,
+      },
+      [
+        "blame",
+        "--line-porcelain",
+        `-L${repositoryLineSelection.lineNumber},${repositoryLineSelection.lineNumber}`,
+        "--",
+        filePath,
+      ],
+      5_000,
+    );
+    const lineBlame = parseLineBlame(blamePorcelain);
+    return lineBlame === undefined
+      ? undefined
+      : {
+          blame: lineBlame,
+          fileUri: repositoryLineSelection.fileUri,
+          lineNumber: repositoryLineSelection.lineNumber,
+          repository: repositoryLineSelection.repository,
+        };
+  }
+
+  private rememberRepositoryLine(activeEditor: vscode.TextEditor | undefined): void {
+    const activeFileUri = activeEditor?.document.uri;
+    if (activeEditor === undefined || activeFileUri?.scheme !== "file") return;
+    const repository = this.workspaceRepositories.findRepositoryContaining(activeFileUri.fsPath);
+    if (repository === undefined) return;
+    this.lastRepositoryLineSelection = {
+      fileUri: activeFileUri,
+      lineNumber: activeEditor.selection.active.line + 1,
+      repository,
+    };
   }
 
   private hide(): void {

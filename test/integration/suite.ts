@@ -51,6 +51,10 @@ export async function run(): Promise<void> {
   assert.ok(workspaceFolder, "Integration workspace did not open.");
 
   const gitApi = await loadBuiltInGitApi();
+  assert.ok(
+    gitApi.openRepository(workspaceFolder.uri),
+    "VS Code Git could not open the integration repository.",
+  );
   const availableVsCodeCommands = new Set(await vscode.commands.getCommands(true));
   const missingNativeGitCommands = [
     "git.branch",
@@ -74,6 +78,7 @@ export async function run(): Promise<void> {
     "git.pushWithTags",
     "git.rebaseAbort",
     "git.viewCommit",
+    "toggle.diff.renderSideBySide",
     "vscode.openFolder",
   ].filter((commandId) => !availableVsCodeCommands.has(commandId));
   assert.deepEqual(
@@ -92,6 +97,7 @@ export async function run(): Promise<void> {
     "gito.createWorktree",
     "gito.showFileHistory",
     "gito.showCurrentLineBlame",
+    "gito.toggleDiffLayout",
     "workbench.view.extension.gito",
   ].filter((commandId) => !registeredGitOCommands.has(commandId));
   assert.deepEqual(
@@ -113,6 +119,31 @@ export async function run(): Promise<void> {
     graphPage.rows.slice(0, 2).map((graphRow) => graphRow.subject),
     ["test: second history entry", "test: first history entry"],
   );
+  const newestCommitHash = graphPage.rows[0]?.hash;
+  assert.ok(newestCommitHash);
+  await vscode.commands.executeCommand("git.viewCommit", repository.rootUri, newestCommitHash);
+  const commitDiffTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+  assert.ok(commitDiffTab, "VS Code did not open the requested commit diff.");
+  assert.match(commitDiffTab.label, new RegExp(newestCommitHash.slice(0, 7), "u"));
+  const editorTabCountBeforeLayoutToggle = vscode.window.tabGroups.all.reduce(
+    (openEditorTabCount, editorTabGroup) => openEditorTabCount + editorTabGroup.tabs.length,
+    0,
+  );
+  await vscode.commands.executeCommand("gito.toggleDiffLayout");
+  assert.equal(
+    vscode.window.tabGroups.all.reduce(
+      (openEditorTabCount, editorTabGroup) => openEditorTabCount + editorTabGroup.tabs.length,
+      0,
+    ),
+    editorTabCountBeforeLayoutToggle,
+    "Changing diff layout must not create a duplicate commit tab.",
+  );
+  assert.equal(
+    vscode.window.tabGroups.activeTabGroup.activeTab,
+    commitDiffTab,
+    "Changing diff layout must keep the existing commit tab active.",
+  );
+  await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   const fileHistoryPage = await loadCommitGraphPage(
     repository,
     [...branchReferences, ...tagReferences],
@@ -383,6 +414,46 @@ export async function run(): Promise<void> {
       deliveredGraphState.rows?.slice(0, 2).map((graphRow) => graphRow.subject),
       ["test: second history entry", "test: first history entry"],
     );
+    const rememberedHistoryDocument = await vscode.workspace.openTextDocument(
+      vscode.Uri.joinPath(repository.rootUri, "history.txt"),
+    );
+    await vscode.window.showTextDocument(rememberedHistoryDocument);
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    await graphView.showFileHistory();
+    const rememberedFileHistoryState = await waitForGraphState(
+      postedGraphMessages,
+      (graphState) => graphState.fileHistoryPath === "history.txt",
+    );
+    assert.deepEqual(
+      rememberedFileHistoryState.rows?.map((graphRow) => graphRow.subject),
+      ["test: second history entry", "test: first history entry"],
+      "The walkthrough must use the most recently focused repository file.",
+    );
+    const rememberedLineDetailsOutcome = await executeCommandAndDismissQuickPick(
+      "gito.showCurrentLineBlame",
+    );
+    assert.equal(
+      rememberedLineDetailsOutcome,
+      "details",
+      "The walkthrough must offer actions for the most recently focused repository line.",
+    );
+    const untrackedDocumentUri = vscode.Uri.joinPath(repository.rootUri, "untracked-line.txt");
+    await vscode.workspace.fs.writeFile(untrackedDocumentUri, Buffer.from("not committed\n"));
+    const untrackedDocument = await vscode.workspace.openTextDocument(untrackedDocumentUri);
+    await vscode.window.showTextDocument(untrackedDocument);
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    assert.equal(
+      await vscode.commands.executeCommand("gito.showCurrentLineBlame"),
+      "missing",
+      "Untracked files must not reuse stale line details.",
+    );
+    await vscode.workspace.fs.delete(untrackedDocumentUri);
+    messageEmitter.fire({ type: "clearFileHistory" });
+    await waitForGraphState(
+      postedGraphMessages,
+      (graphState) =>
+        graphState !== rememberedFileHistoryState && graphState.fileHistoryPath === undefined,
+    );
     const selectedCommitHash = deliveredGraphState.rows?.[1]?.hash;
     assert.ok(selectedCommitHash);
     messageEmitter.fire({
@@ -562,14 +633,29 @@ async function waitForRepository(
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     const repository = gitApi.repositories.find(
-      (candidateRepository) => candidateRepository.rootUri.fsPath === repositoryPath,
+      (candidateRepository) =>
+        pathsIdentifySameLocation(candidateRepository.rootUri.fsPath, repositoryPath),
     );
     if (repository !== undefined) {
       return repository;
     }
     await delay(100);
   }
-  throw new Error(`VS Code Git did not open ${repositoryPath}.`);
+  const openedRepositoryPaths = gitApi.repositories.map(
+    (candidateRepository) => candidateRepository.rootUri.fsPath,
+  );
+  const workspaceFolderPaths =
+    vscode.workspace.workspaceFolders?.map((workspaceFolder) => workspaceFolder.uri.fsPath) ?? [];
+  throw new Error(
+    [
+      `VS Code Git did not open ${repositoryPath}.`,
+      `Git executable: ${gitApi.git.path}`,
+      `Workspace folders: ${workspaceFolderPaths.join(", ") || "none"}`,
+      `Opened repositories: ${openedRepositoryPaths.join(", ") || "none"}`,
+      `git.enabled: ${vscode.workspace.getConfiguration("git").get("enabled", true)}`,
+      `git.autoRepositoryDetection: ${String(vscode.workspace.getConfiguration("git").get("autoRepositoryDetection", true))}`,
+    ].join("\n"),
+  );
 }
 
 async function waitForGraphState(
@@ -690,4 +776,23 @@ async function waitForAutomaticTagComparison(gitSidebar: GitSidebar): Promise<vo
 
 function delay(delayMilliseconds: number): Promise<void> {
   return new Promise((resolveDelay) => setTimeout(resolveDelay, delayMilliseconds));
+}
+
+async function executeCommandAndDismissQuickPick(commandId: string): Promise<unknown> {
+  const commandCompletion = vscode.commands.executeCommand(commandId);
+  let commandCompleted = false;
+  void commandCompletion.then(
+    () => {
+      commandCompleted = true;
+    },
+    () => {
+      commandCompleted = true;
+    },
+  );
+  for (let dismissalAttempt = 0; dismissalAttempt < 40; dismissalAttempt += 1) {
+    if (commandCompleted) return commandCompletion;
+    await delay(50);
+    await vscode.commands.executeCommand("workbench.action.closeQuickOpen");
+  }
+  throw new Error(`VS Code did not dismiss the native picker opened by ${commandId}.`);
 }

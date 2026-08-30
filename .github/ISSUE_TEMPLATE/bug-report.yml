@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible Git'o defect
+title: "fix: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Remove private repository names, URLs, paths, and credentials before submitting.
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Git'o version, VS Code version, and operating system.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Smallest reproduction
+      description: Exact starting state, clicks or commands, and observed result.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitised diagnostics
+      description: Relevant Git'o output or screenshot with private data removed.

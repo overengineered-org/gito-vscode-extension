@@ -1,10 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export function createIntegrationFixture() {
-  const integrationFixtureRootPath = mkdtempSync(join(tmpdir(), "gito-integration-"));
+  const integrationFixtureRootPath = mkdtempSync(
+    join(realpathSync.native(tmpdir()), "gito-integration-"),
+  );
   const remoteRepositoryPath = join(integrationFixtureRootPath, "remote.git");
   const workspaceRepositoryPath = join(integrationFixtureRootPath, "workspace");
 

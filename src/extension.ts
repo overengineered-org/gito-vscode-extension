@@ -73,6 +73,9 @@ export async function activate(extensionContext: vscode.ExtensionContext): Promi
     vscode.commands.registerCommand("gito.toggleInlineBlame", () =>
       currentLineBlame.toggleInlineAnnotation(),
     ),
+    vscode.commands.registerCommand("gito.toggleDiffLayout", () =>
+      vscode.commands.executeCommand("toggle.diff.renderSideBySide"),
+    ),
     vscode.commands.registerCommand("gito.openGettingStarted", openGettingStartedWalkthrough),
     vscode.commands.registerCommand("gito.refreshGit", () => gitSidebar.refresh()),
     vscode.commands.registerCommand("gito.createWorktree", (repositoryRootUri?: vscode.Uri) => {

@@ -4,6 +4,10 @@ import test from "node:test";
 
 interface ExtensionManifest {
   readonly browser?: string;
+  readonly galleryBanner: { readonly color: string; readonly theme: string };
+  readonly icon: string;
+  readonly keywords: readonly string[];
+  readonly pricing: string;
   readonly capabilities: {
     readonly untrustedWorkspaces: { readonly supported: boolean };
     readonly virtualWorkspaces: boolean;
@@ -63,6 +67,30 @@ test("runs complete static validation before packaging", () => {
     extensionManifest.scripts["verify:static"],
     "npm run clean && npm run typecheck && npm test && npm run benchmark:product && npm run build",
   );
+  assert.equal(
+    extensionManifest.scripts["test:integration"],
+    "npm run build && npm run build:integration && node test/runIntegration.mjs",
+  );
+});
+
+test("ships complete Marketplace discovery metadata", () => {
+  assert.equal(extensionManifest.icon, "media/gito-icon.png");
+  assert.deepEqual(extensionManifest.galleryBanner, {
+    color: "#2E0854",
+    theme: "dark",
+  });
+  assert.equal(extensionManifest.pricing, "Free");
+  assert.deepEqual(extensionManifest.keywords, [
+    "git",
+    "source control",
+    "branches",
+    "tags",
+    "worktrees",
+    "history",
+    "blame",
+    "merge conflicts",
+  ]);
+  assert.ok(existsSync(new URL("../media/gito-icon.png", import.meta.url)));
 });
 
 test("ships one desktop path backed by VS Code Git", () => {
@@ -84,6 +112,7 @@ test("ships one desktop path backed by VS Code Git", () => {
       "gito.showCurrentLineBlame",
       "gito.refreshGit",
       "gito.toggleInlineBlame",
+      "gito.toggleDiffLayout",
       "gito.createWorktree",
       "gito.openWorktreeInCurrentWindow",
       "gito.openWorktreeInNewWindow",
@@ -91,6 +120,11 @@ test("ships one desktop path backed by VS Code Git", () => {
     ],
   );
   assert.deepEqual(extensionManifest.contributes.menus?.["editor/title"], [
+    {
+      command: "gito.toggleDiffLayout",
+      group: "navigation@10",
+      when: "activeEditor == multiDiffEditor",
+    },
     {
       command: "gito.showFileHistory",
       group: "navigation@20",

@@ -1,0 +1,30 @@
+version = 1
+name = "gito-sanitized-local"
+
+[setup]
+script = "bash .codex/environments/setup.sh"
+
+[[actions]]
+name = "Bootstrap"
+icon = "tool"
+command = "bash .codex/environments/setup.sh"
+
+[[actions]]
+name = "Static checks"
+icon = "tool"
+command = "bash .codex/environments/run.sh npm run verify:static"
+
+[[actions]]
+name = "Extension Host"
+icon = "tool"
+command = "bash .codex/environments/run.sh npm run test:integration"
+
+[[actions]]
+name = "Package VSIX"
+icon = "tool"
+command = "bash .codex/environments/run.sh npm run package:vsix"
+
+[[actions]]
+name = "Full validation"
+icon = "tool"
+command = "bash .codex/environments/run.sh ./scripts/verify-local.sh"
