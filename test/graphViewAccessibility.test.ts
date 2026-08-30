@@ -46,3 +46,20 @@ test("provides a persistent, replayable, keyboard-accessible Graph tour", () => 
   assert.match(graphViewSource, /if \(!graphTour\.hidden\) completeGraphTour\(\)/u);
   assert.match(graphViewSource, /\.row-actions\.tour-anchor \{ opacity: 1; \}/u);
 });
+
+test("animates Graph hierarchy once per repository and respects reduced motion", () => {
+  assert.match(
+    graphViewSource,
+    /const shouldAnimateGraph = currentRepositoryPath !== graphViewMessage\.repositoryPath/u,
+  );
+  assert.match(
+    graphViewSource,
+    /shouldAnimateGraph && commitRowIndex < 12/u,
+  );
+  assert.match(graphViewSource, /graphPath\.setAttribute\('pathLength', '1'\)/u);
+  assert.match(graphViewSource, /@keyframes graph-path-enter/u);
+  assert.match(
+    graphViewSource,
+    /@media \(prefers-reduced-motion: reduce\)[^}]*animation-duration: \.01ms !important/u,
+  );
+});

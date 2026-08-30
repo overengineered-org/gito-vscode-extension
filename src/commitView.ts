@@ -388,13 +388,15 @@ function createCommitViewHtml(): string {
     .options-action:hover .action-icon { transform: translateY(1px); }
     .summary { display: flex; align-items: center; gap: 12px; min-height: 18px; color: var(--vscode-descriptionForeground); font-size: 11px; }
     .summary strong { color: var(--vscode-foreground); font-weight: 600; }
-    .branch { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .branch { display: inline-flex; min-width: 0; align-items: center; gap: 4px; overflow: hidden; padding: 1px 6px; border-radius: 999px; color: var(--vscode-charts-green); background: color-mix(in srgb, var(--vscode-charts-green) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-charts-green) 24%, transparent); }
+    .branch svg { width: 11px; height: 11px; flex: none; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; }
+    .branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .message-count { margin-left: auto; font-variant-numeric: tabular-nums; }
     .message-count[data-over-limit="true"] { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); font-weight: 600; }
     .error { padding: 7px 9px; border-radius: 5px; color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); background: var(--vscode-inputValidation-errorBackground, transparent); font-size: 11px; box-shadow: inset 0 0 0 1px var(--vscode-inputValidation-errorBorder, transparent); }
     .changes { display: grid; gap: 4px; margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border)); }
     .changes[data-busy="true"] { opacity: .55; pointer-events: none; }
-    .clean-state { display: flex; align-items: center; gap: 8px; min-height: 30px; color: var(--vscode-descriptionForeground); }
+    .clean-state { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 7px; border-radius: 5px; color: var(--vscode-descriptionForeground); background: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--vscode-gitDecoration-addedResourceForeground)) 7%, transparent); animation: clean-state-enter 220ms cubic-bezier(.2, .8, .2, 1) both; }
     .clean-state svg { width: 15px; height: 15px; color: var(--vscode-testing-iconPassed, var(--vscode-gitDecoration-addedResourceForeground)); fill: currentColor; }
     .change-group { display: grid; gap: 1px; }
     .change-group-header { display: flex; align-items: center; gap: 7px; min-height: 30px; font-weight: 600; }
@@ -402,7 +404,9 @@ function createCommitViewHtml(): string {
     .change-group-action, .change-action, .change-main { width: auto; min-height: 26px; color: var(--vscode-foreground); background: transparent; }
     .change-group-action { margin-left: auto; padding: 0 7px; border-radius: 4px; color: var(--vscode-descriptionForeground); font-size: 11px; }
     .change-group-action:hover, .change-action:hover, .change-main:hover { color: var(--vscode-list-hoverForeground); background: var(--vscode-list-hoverBackground); }
-    .change-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px 28px; align-items: center; min-height: 30px; border-radius: 4px; }
+    .change-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px 28px; align-items: center; min-height: 30px; border-radius: 4px; transition: background-color 120ms cubic-bezier(.2, .8, .2, 1), box-shadow 120ms cubic-bezier(.2, .8, .2, 1); }
+    .change-row:hover { background: var(--vscode-list-hoverBackground); }
+    .change-row:focus-within { background: var(--vscode-list-focusBackground); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
     .change-row.single-action { grid-template-columns: minmax(0, 1fr) 28px; }
     .change-main { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 7px; padding: 4px 7px; text-align: left; }
     .change-name { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
@@ -410,8 +414,9 @@ function createCommitViewHtml(): string {
     .change-action { display: grid; place-items: center; padding: 0; border-radius: 4px; color: var(--vscode-descriptionForeground); font-size: 16px; }
     .change-action[hidden] { display: none; }
     .screen-reader-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    @keyframes clean-state-enter { from { opacity: 0; transform: translateY(3px); } }
     [hidden] { display: none !important; }
-    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition-duration: .01ms !important; } }
   </style>
 </head>
 <body>
@@ -429,7 +434,7 @@ function createCommitViewHtml(): string {
     <div class="summary" aria-live="polite">
       <span><strong id="staged">0</strong> staged</span>
       <span><strong id="unstaged">0</strong> unstaged</span>
-      <span id="branch" class="branch"></span>
+      <span class="branch"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="3.5" r="1.75"/><circle cx="4" cy="12.5" r="1.75"/><circle cx="12" cy="5.5" r="1.75"/><path d="M4 5.25v5.5M5.75 11.5h1.5A4.75 4.75 0 0 0 12 6.75"/></svg><span id="branch-name" class="branch-name"></span></span>
       <output id="message-count" class="message-count" role="status" aria-live="polite" aria-atomic="true">0/50</output>
     </div>
     <div id="error" class="error" role="alert" hidden></div>
@@ -448,7 +453,7 @@ function createCommitViewHtml(): string {
     const commitOptionsButton = document.getElementById('commit-options');
     const stagedChangeCount = document.getElementById('staged');
     const unstagedChangeCount = document.getElementById('unstaged');
-    const branchName = document.getElementById('branch');
+    const branchNameLabel = document.getElementById('branch-name');
     const commitError = document.getElementById('error');
     const changesContainer = document.getElementById('changes');
     const idealCommitSubjectLength = 50;
@@ -506,7 +511,7 @@ function createCommitViewHtml(): string {
       commitMessageInput.disabled = !commitViewState.selectedRepositoryPath;
       stagedChangeCount.textContent = commitViewState.stagedChangeCount;
       unstagedChangeCount.textContent = commitViewState.unstagedChangeCount;
-      branchName.textContent = commitViewState.branchName;
+      branchNameLabel.textContent = commitViewState.branchName;
       commitMessageInput.placeholder = 'Message (' + (navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+') + 'Enter to commit on "' + commitViewState.branchName + '")';
       updateCommitMessagePresentation();
       updateCommitAvailability();

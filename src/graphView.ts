@@ -700,12 +700,13 @@ function createGraphViewHtml(): string {
     .icon-button:active { transform: rotate(18deg); }
     .icon-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
     .tour-trigger { margin-left: auto; }
-    .sync-button { min-height: 24px; margin-left: auto; padding: 2px 8px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 5px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); font: inherit; cursor: pointer; }
-    .sync-button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+    .sync-button { min-height: 24px; margin-left: auto; padding: 2px 8px; border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 72%, transparent); border-radius: 5px; color: var(--vscode-textLink-foreground); background: color-mix(in srgb, var(--vscode-textLink-foreground) 10%, var(--vscode-sideBar-background)); font: inherit; cursor: pointer; transition: background-color 140ms cubic-bezier(.2, .8, .2, 1), border-color 140ms cubic-bezier(.2, .8, .2, 1); }
+    .sync-button:hover { border-color: var(--vscode-focusBorder); background: color-mix(in srgb, var(--vscode-textLink-foreground) 16%, var(--vscode-sideBar-background)); }
+    .sync-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
     .sync-button + .tour-trigger, .tour-trigger + .icon-button { margin-left: 0; }
     .icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; }
     .search { width: 100%; height: 28px; margin-top: 3px; padding: 0 9px; border: 1px solid var(--vscode-input-border, transparent); border-radius: 5px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); font: inherit; }
-    .search:focus { border-color: var(--vscode-focusBorder); outline: none; }
+    .search:focus { border-color: var(--vscode-focusBorder); outline: none; box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 35%, transparent); }
     .search::placeholder { color: var(--vscode-input-placeholderForeground); }
     .scope { display: flex; align-items: center; gap: 6px; min-height: 24px; margin-top: 5px; padding: 2px 5px 2px 8px; border-radius: 5px; color: var(--vscode-textLink-foreground); background: color-mix(in srgb, var(--vscode-textLink-foreground) 12%, transparent); }
     .scope span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -756,7 +757,10 @@ function createGraphViewHtml(): string {
     .repository-actions .action { flex: 1; text-align: center; }
     .notice { margin: 7px 8px; padding: 6px 8px; border-radius: 5px; color: var(--vscode-notificationsInfoIcon-foreground, var(--vscode-foreground)); background: color-mix(in srgb, var(--vscode-notificationsInfoIcon-foreground, var(--vscode-foreground)) 10%, transparent); }
     .notice.error { color: var(--vscode-errorForeground); background: color-mix(in srgb, var(--vscode-errorForeground) 10%, transparent); }
-    .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-height: 42px; margin: 1px 4px; padding: 0 4px 0 3px; border-radius: 5px; outline: none; transition: background-color 120ms cubic-bezier(.2, .8, .2, 1); }
+    .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-height: 42px; margin: 1px 4px; padding: 0 4px 0 3px; border-radius: 5px; outline: none; transition: background-color 120ms cubic-bezier(.2, .8, .2, 1), box-shadow 120ms cubic-bezier(.2, .8, .2, 1); }
+    .row.entering { animation: row-enter 320ms cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--row-index) * 22ms); }
+    .row.entering .graph path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: graph-path-enter 440ms cubic-bezier(.2, .8, .2, 1) forwards; animation-delay: calc(70ms + var(--row-index) * 22ms); }
+    .row.entering .graph circle { transform-box: fill-box; transform-origin: center; animation: graph-node-enter 260ms cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(120ms + var(--row-index) * 22ms); }
     .row:hover { background: var(--vscode-list-hoverBackground); }
     .row:focus-within { background: var(--vscode-list-focusBackground); color: var(--vscode-list-focusForeground); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
     .row-main { display: grid; grid-template-columns: auto minmax(0, 1fr); min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; font: inherit; cursor: pointer; outline: none; }
@@ -775,15 +779,18 @@ function createGraphViewHtml(): string {
     .references { display: inline-flex; min-width: 0; gap: 3px; }
     .reference { max-width: 140px; overflow: hidden; padding: 1px 6px; border-radius: 999px; color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 12%, transparent); }
     .reference.branch { color: var(--vscode-charts-green); background: color-mix(in srgb, var(--vscode-charts-green) 18%, transparent); }
-    .reference.tag { color: var(--vscode-charts-yellow); background: color-mix(in srgb, var(--vscode-charts-yellow) 18%, transparent); }
+    .reference.tag { color: var(--vscode-charts-blue); background: color-mix(in srgb, var(--vscode-charts-blue) 18%, transparent); }
     .reference.remote { color: var(--vscode-charts-blue); background: color-mix(in srgb, var(--vscode-charts-blue) 18%, transparent); }
     .state, .more { padding: 14px 12px; color: var(--vscode-descriptionForeground); text-align: center; }
     .more { width: calc(100% - 24px); min-height: 34px; margin: 9px 12px 14px; padding: 0 12px; border: 0; border-radius: 6px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); cursor: pointer; font: inherit; font-weight: 600; transition: background-color 140ms cubic-bezier(.2, .8, .2, 1), transform 140ms cubic-bezier(.2, .8, .2, 1); }
     .more:hover { background: var(--vscode-button-secondaryHoverBackground); }
     .more:active { transform: translateY(1px); }
     .more:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+    @keyframes row-enter { from { opacity: 0; transform: translateY(4px); } }
+    @keyframes graph-path-enter { to { stroke-dashoffset: 0; } }
+    @keyframes graph-node-enter { from { opacity: 0; transform: scale(.55); } }
     [hidden] { display: none !important; }
-    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition-duration: .01ms !important; } }
   </style>
 </head>
 <body>
@@ -796,7 +803,7 @@ function createGraphViewHtml(): string {
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const svgNamespace = 'http://www.w3.org/2000/svg';
-    const laneColors = ['var(--vscode-charts-blue)', 'var(--vscode-charts-green)', 'var(--vscode-charts-purple)', 'var(--vscode-charts-orange)'];
+    const laneColors = ['var(--vscode-charts-green)', 'var(--vscode-charts-purple)', 'var(--vscode-charts-blue)', 'var(--vscode-charts-orange)'];
     const graphRowsContainer = document.getElementById('rows');
     const commitCountLabel = document.getElementById('count');
     const loadMoreButton = document.getElementById('more');
@@ -879,6 +886,7 @@ function createGraphViewHtml(): string {
         return;
       }
       if (graphViewMessage.type !== 'state') return;
+      const shouldAnimateGraph = currentRepositoryPath !== graphViewMessage.repositoryPath;
       currentRepositoryPath = graphViewMessage.repositoryPath;
       graphTourCompleted = Boolean(graphViewMessage.graphTourCompleted) || graphTourCompleted;
       if (searchInput.value !== (graphViewMessage.searchText || '')) searchInput.value = graphViewMessage.searchText || '';
@@ -889,7 +897,13 @@ function createGraphViewHtml(): string {
       syncButton.textContent = graphViewMessage.upstreamName ? 'Sync · ' + graphViewMessage.upstreamName : 'Preview Sync';
       syncButton.title = graphViewMessage.upstreamName ? 'Preview incoming and outgoing commits before Pull or Push' : 'Preview repository sync';
       renderWorktrees(graphViewMessage.worktrees || []);
-      graphRowsContainer.replaceChildren(...(graphViewMessage.rows.length ? graphViewMessage.rows.map(createCommitRow) : [createStatusMessage('No commits yet')]));
+      graphRowsContainer.replaceChildren(...(graphViewMessage.rows.length
+        ? graphViewMessage.rows.map((commitRow, commitRowIndex) => createCommitRow(
+            commitRow,
+            shouldAnimateGraph && commitRowIndex < 12,
+            commitRowIndex,
+          ))
+        : [createStatusMessage('No commits yet')]));
       loadMoreButton.hidden = !graphViewMessage.hasMore;
       if (!graphTour.hidden) showGraphTourStep(graphTourStepIndex);
       else if (!graphTourCompleted && graphViewMessage.rows.length) startGraphTour(false);
@@ -903,9 +917,10 @@ function createGraphViewHtml(): string {
       return statusMessage;
     }
 
-    function createCommitRow(commitRow) {
+    function createCommitRow(commitRow, shouldAnimateGraphEntrance, commitRowIndex) {
       const commitRowElement = document.createElement('div');
-      commitRowElement.className = 'row';
+      commitRowElement.className = shouldAnimateGraphEntrance ? 'row entering' : 'row';
+      commitRowElement.style.setProperty('--row-index', String(Math.min(commitRowIndex, 8)));
       commitRowElement.title = commitRow.hash + '\\n' + commitRow.authorName + '\\n' + exactDate(commitRow.committedAt);
       const commitOpenButton = document.createElement('button');
       commitOpenButton.className = 'row-main';
@@ -1234,6 +1249,7 @@ function createGraphViewHtml(): string {
     function createPath(pathDefinition, colorIndex) {
       const graphPath = document.createElementNS(svgNamespace, 'path');
       graphPath.setAttribute('d', pathDefinition);
+      graphPath.setAttribute('pathLength', '1');
       graphPath.setAttribute('fill', 'none');
       graphPath.setAttribute('stroke', laneColors[colorIndex]);
       graphPath.setAttribute('stroke-width', '2');

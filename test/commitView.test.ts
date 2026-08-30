@@ -58,6 +58,17 @@ const commitViewSource = readFileSync(
 );
 const generatedCommitViewScript = extractGeneratedBrowserScript(commitViewSource);
 
+test("uses theme-aware branch and motion-safe change presentation", () => {
+  assert.match(commitViewSource, /id="branch-name" class="branch-name"/u);
+  assert.match(commitViewSource, /class="branch"><svg[^>]*aria-hidden="true"/u);
+  assert.match(commitViewSource, /color: var\(--vscode-charts-green\)/u);
+  assert.match(commitViewSource, /@keyframes clean-state-enter/u);
+  assert.match(
+    commitViewSource,
+    /@media \(prefers-reduced-motion: reduce\)[^}]*animation-duration: \.01ms !important/u,
+  );
+});
+
 test("keeps commit controls and working-tree actions synchronized", () => {
   const simulatedElements = new Map<string, SimulatedWebviewElement>();
   const postedMessages: unknown[] = [];
