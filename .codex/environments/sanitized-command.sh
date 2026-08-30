@@ -85,8 +85,10 @@ unset \
   YARN_NPM_AUTH_TOKEN
 
 if git -C "$project_worktree_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  if [[ "$(git -C "$project_worktree_root" config --local --get user.name || true)" != "Repository Maintainer" ]] || \
-    [[ "$(git -C "$project_worktree_root" config --local --get user.email || true)" != "repository-maintainer@overengineered.invalid" ]]; then
+  readonly worktree_git_user_name="$(git -C "$project_worktree_root" config --local --get user.name || true)"
+  readonly worktree_git_user_email="$(git -C "$project_worktree_root" config --local --get user.email || true)"
+  if [[ -n "$worktree_git_user_name" && "$worktree_git_user_name" != "Repository Maintainer" ]] || \
+    [[ -n "$worktree_git_user_email" && "$worktree_git_user_email" != "repository-maintainer@overengineered.invalid" ]]; then
     echo "error: run bash .codex/environments/setup.sh to sanitise this worktree's Git identity" >&2
     exit 1
   fi

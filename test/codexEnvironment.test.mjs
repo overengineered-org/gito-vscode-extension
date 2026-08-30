@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 const sanitizedCommandPath = ".codex/environments/sanitized-command.sh";
@@ -80,4 +82,38 @@ test("removes inherited credentials and personal Git identity at runtime", () =>
     ).trim(),
     "repository-maintainer@overengineered.invalid",
   );
+});
+
+test("allows a CI checkout without local Git identity", () => {
+  const ciCheckoutRoot = mkdtempSync(join(tmpdir(), "gito-ci-checkout-"));
+  const ciEnvironmentDirectory = join(ciCheckoutRoot, ".codex", "environments");
+
+  try {
+    mkdirSync(ciEnvironmentDirectory, { recursive: true });
+    for (const environmentFileName of ["sanitized-command.sh", "gitconfig", "npmrc"]) {
+      copyFileSync(
+        join(".codex", "environments", environmentFileName),
+        join(ciEnvironmentDirectory, environmentFileName),
+      );
+    }
+    execFileSync("git", ["init", "--quiet", ciCheckoutRoot]);
+
+    const inspectedEnvironment = JSON.parse(
+      execFileSync(
+        "bash",
+        [
+          join(ciEnvironmentDirectory, "sanitized-command.sh"),
+          "node",
+          "-e",
+          "process.stdout.write(JSON.stringify({author:process.env.GIT_AUTHOR_EMAIL,user:process.env.USER}))",
+        ],
+        { encoding: "utf8" },
+      ),
+    );
+
+    assert.equal(inspectedEnvironment.author, undefined);
+    assert.equal(inspectedEnvironment.user, "repository-maintainer");
+  } finally {
+    rmSync(ciCheckoutRoot, { force: true, recursive: true });
+  }
 });
