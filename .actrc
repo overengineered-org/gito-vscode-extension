@@ -1,0 +1,7 @@
+--container-architecture=linux/amd64
+--platform=ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-24.04@sha256:dff4ec57d90046a7283aafc314298380be82bfeccb9ad0f1b36c4ebe74aabe78
+--container-options=-v=gito-codeql-cache:/opt/codeql-cache
+--workflows=.act/workflows/verify.yml
+--bind
+--pull=false
+--reuse

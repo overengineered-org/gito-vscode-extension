@@ -1,0 +1,357 @@
+{
+  "name": "gito",
+  "displayName": "Git'o",
+  "description": "Work with repositories, worktrees, branches, tags, and commits from a focused Git sidebar.",
+  "icon": "media/gito-icon.png",
+  "version": "0.8.10",
+  "publisher": "overengineered-org",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/overengineered-org/gito-vscode-extension.git"
+  },
+  "author": {
+    "name": "Overengineered Org"
+  },
+  "homepage": "https://github.com/overengineered-org/gito-vscode-extension#readme",
+  "bugs": {
+    "url": "https://github.com/overengineered-org/gito-vscode-extension/issues"
+  },
+  "type": "module",
+  "engines": {
+    "vscode": "^1.134.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "keywords": [
+    "git",
+    "source control",
+    "branches",
+    "tags",
+    "worktrees",
+    "history",
+    "blame",
+    "merge conflicts"
+  ],
+  "galleryBanner": {
+    "color": "#2E0854",
+    "theme": "dark"
+  },
+  "pricing": "Free",
+  "main": "./dist/extension.cjs",
+  "files": [
+    "dist/extension.cjs",
+    "media/gito-icon.png",
+    "media/gito.svg",
+    "media/onboarding/*.svg",
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs/ARCHITECTURE.md",
+    "LICENSE"
+  ],
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gito",
+          "title": "Git'o",
+          "icon": "media/gito.svg"
+        }
+      ]
+    },
+    "views": {
+      "gito": [
+        {
+          "id": "gito.git",
+          "name": "Git"
+        },
+        {
+          "id": "gito.commit",
+          "name": "Changes",
+          "type": "webview",
+          "visibility": "visible"
+        },
+        {
+          "id": "gito.graph",
+          "name": "Graph",
+          "type": "webview",
+          "visibility": "visible"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "gito.openGettingStarted",
+        "title": "Git'o: Open Getting Started",
+        "icon": "$(question)"
+      },
+      {
+        "command": "gito.compareRemoteTags",
+        "title": "Git'o: Compare Tags with Remote",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "gito.showFileHistory",
+        "title": "Git'o: Show File History",
+        "icon": "$(history)"
+      },
+      {
+        "command": "gito.showCurrentLineBlame",
+        "title": "Git'o: Show Current Line Details",
+        "icon": "$(git-commit)"
+      },
+      {
+        "command": "gito.refreshGit",
+        "title": "Git'o: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gito.toggleInlineBlame",
+        "title": "Git'o: Toggle Current Line Annotation",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "gito.toggleDiffLayout",
+        "title": "Git'o: Toggle Inline / Side-by-Side Diff",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "gito.createWorktree",
+        "title": "Git'o: Create Feature Worktree",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gito.openWorktreeInCurrentWindow",
+        "title": "Open Worktree in Current Window",
+        "icon": "$(window)"
+      },
+      {
+        "command": "gito.openWorktreeInNewWindow",
+        "title": "Open Worktree in New Window",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "gito.renameWorktree",
+        "title": "Rename Worktree Label",
+        "icon": "$(edit)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "gito.createWorktree",
+          "when": "false"
+        },
+        {
+          "command": "gito.openWorktreeInCurrentWindow",
+          "when": "false"
+        },
+        {
+          "command": "gito.openWorktreeInNewWindow",
+          "when": "false"
+        },
+        {
+          "command": "gito.renameWorktree",
+          "when": "false"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "gito.toggleDiffLayout",
+          "when": "activeEditor == multiDiffEditor",
+          "group": "navigation@10"
+        },
+        {
+          "command": "gito.showFileHistory",
+          "when": "resourceScheme == file && activeEditor != multiDiffEditor",
+          "group": "navigation@20"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "gito.showFileHistory",
+          "when": "resourceScheme == file",
+          "group": "navigation@20"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "gito.refreshGit",
+          "when": "view == gito.git",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gito.openGettingStarted",
+          "when": "view == gito.git",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "gito.openWorktreeInNewWindow",
+          "when": "view == gito.git && viewItem == gito.worktree.available",
+          "group": "inline"
+        },
+        {
+          "command": "gito.openWorktreeInCurrentWindow",
+          "when": "view == gito.git && viewItem == gito.worktree.available",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gito.renameWorktree",
+          "when": "view == gito.git && (viewItem == gito.worktree.current || viewItem == gito.worktree.available)",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "walkthroughs": [
+      {
+        "id": "gettingStarted",
+        "title": "Get started with Git'o",
+        "description": "Learn the complete local Git workflow in under two minutes.",
+        "when": "!isWeb",
+        "steps": [
+          {
+            "id": "gito.gettingStarted.repositories",
+            "title": "Navigate repositories and references",
+            "description": "Git'o follows the repository already open in VS Code. Read branch and tag state through icons, text, and colour, then create, switch, compare, or prune in place.\n[Open Git'o](command:workbench.view.extension.gito)",
+            "media": {
+              "image": "media/onboarding/repositories.svg",
+              "altText": "Git'o repository tree showing branch and tag states"
+            },
+            "completionEvents": [
+              "onView:gito.git"
+            ]
+          },
+          {
+            "id": "gito.gettingStarted.changes",
+            "title": "Review and commit changes",
+            "description": "Review paths, stage deliberately, write a clear subject, then commit or publish. During conflicts, plain-language branch roles lead into VS Code's Merge Editor.\n[Open Changes](command:gito.commit.focus)",
+            "media": {
+              "image": "media/onboarding/changes.svg",
+              "altText": "Git'o Changes view with commit composer and staged files"
+            },
+            "completionEvents": [
+              "onView:gito.commit"
+            ]
+          },
+          {
+            "id": "gito.gettingStarted.graph",
+            "title": "Understand and act on history",
+            "description": "Search complete history, inspect commits in one reusable tab, preview sync risk, and run guarded actions.\n[Open Graph](command:gito.graph.focus)",
+            "media": {
+              "image": "media/onboarding/graph.svg",
+              "altText": "Git'o Graph showing history lanes, references, search, and sync preview"
+            },
+            "completionEvents": [
+              "onView:gito.graph"
+            ]
+          },
+          {
+            "id": "gito.gettingStarted.worktrees",
+            "title": "Work on features in parallel",
+            "description": "Give each feature its own branch, folder, and VS Code window—without stashing or switching the primary checkout. Monitor and reopen every worktree from Git'o.\n[Create a worktree](command:gito.createWorktree)",
+            "media": {
+              "image": "media/onboarding/worktrees.svg",
+              "altText": "Primary checkout connected to clean, modified, and conflicted worktrees"
+            },
+            "completionEvents": [
+              "onCommand:gito.createWorktree"
+            ]
+          },
+          {
+            "id": "gito.gettingStarted.fileContext",
+            "title": "Trace a file or line",
+            "description": "First focus a tracked repository file and place the cursor on a line. Git'o remembers that file and line when you return to this tour.\n[Show history for that file](command:gito.showFileHistory) · [Show details for that line](command:gito.showCurrentLineBlame)",
+            "media": {
+              "image": "media/onboarding/file-context.svg",
+              "altText": "Editor with current-line authorship beside a focused file-history timeline"
+            },
+            "completionEvents": [
+              "onCommand:gito.showFileHistory",
+              "onCommand:gito.showCurrentLineBlame"
+            ]
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "Git'o",
+      "properties": {
+        "gito.worktrees.storageRoot": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Absolute folder for linked worktrees. `~` is supported. Empty stores them beside the primary repository under `.gito-worktrees/<repository>/`."
+        },
+        "gito.blame.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "Show native current-line authorship in the status bar. No repository data leaves your machine."
+        },
+        "gito.blame.inlineEnabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "Show subtle author, age, and commit summary text after the active line."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "git.detectWorktrees": true
+    },
+    "viewsWelcome": [
+      {
+        "view": "gito.git",
+        "contents": "Choose how to start.\n[Clone Repository](command:git.clone)\n[Open Folder](command:vscode.openFolder)\n[Learn Git'o](command:gito.openGettingStarted)"
+      }
+    ]
+  },
+  "scripts": {
+    "audit:production": "npm audit --omit=dev",
+    "clean": "node scripts/clean.mjs",
+    "vscode:prepublish": "npm run verify:static",
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.cjs",
+    "build:integration": "esbuild test/integration/suite.ts --bundle --platform=node --format=cjs --external:vscode --outfile=.integration-test/suite.cjs",
+    "benchmark:product": "node test/runProductBenchmark.mjs",
+    "check": "npm run verify:static && npm run test:integration",
+    "package:verify": "node scripts/validate-package-contents.mjs",
+    "package:vsix": "vsce package --no-dependencies --out dist/gito.vsix",
+    "release": "release-it --ci",
+    "test": "node --test test/*.test.ts test/*.test.mjs",
+    "test:integration": "npm run build && npm run build:integration && node test/runIntegration.mjs",
+    "test:integration:vsix": "npm run build:integration && node scripts/run-vsix-integration.mjs",
+    "test:release-package": "node --test test/releasePackage.contract.mjs",
+    "typecheck": "tsc --noEmit",
+    "verify:local": "./scripts/verify-local.sh",
+    "verify:local:report": "./scripts/verify-local.sh --report-status",
+    "verify:static": "npm run clean && npm run typecheck && npm test && npm run benchmark:product && npm run build"
+  },
+  "devDependencies": {
+    "@release-it/conventional-changelog": "12.0.0",
+    "@types/node": "^24.13.3",
+    "@types/vscode": "^1.134.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "3.9.2",
+    "conventional-changelog-conventionalcommits": "10.4.0",
+    "esbuild": "^0.28.2",
+    "jszip": "3.10.1",
+    "release-it": "21.0.2",
+    "typescript": "^7.0.2"
+  }
+}

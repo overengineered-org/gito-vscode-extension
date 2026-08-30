@@ -1,0 +1,10 @@
+{
+  "name": "gito-integration-test-harness",
+  "displayName": "Git'o Integration Test Harness",
+  "version": "0.0.0",
+  "publisher": "overengineered-org",
+  "private": true,
+  "engines": {
+    "vscode": "^1.134.0"
+  }
+}
