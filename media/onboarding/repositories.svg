@@ -16,7 +16,7 @@
   <text class="text title" x="111" y="151">Branches</text>
   <circle class="current" cx="123" cy="177" r="6"/><text class="text" x="140" y="182">main</text><text class="text muted" x="198" y="182">Current · synced</text>
   <circle class="ahead" cx="123" cy="205" r="6"/><text class="text" x="140" y="210">feature/export</text><text class="text muted" x="258" y="210">2 ahead of origin/feature/export</text>
-  <circle class="remote" cx="401" cy="177" r="6"/><text class="text" x="418" y="182">origin/release</text><text class="text muted" x="418" y="202">Remote only</text>
+  <circle class="remote" cx="366" cy="177" r="6"/><text class="text" x="383" y="182">origin/release<tspan class="muted" dx="12">Remote only</tspan></text>
   <text class="text title" x="111" y="241">Tags</text>
   <circle class="current" cx="123" cy="267" r="6"/><text class="text" x="140" y="272">v2.4.0</text><text class="text muted" x="202" y="272">Synced</text>
   <circle class="behind" cx="300" cy="267" r="6"/><text class="text" x="317" y="272">v2.5.0</text><text class="text muted" x="379" y="272">Local only</text>
