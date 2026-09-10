@@ -287,6 +287,19 @@ test("onboards every feature group through one native walkthrough", () => {
   }
 });
 
+test("keeps remote branch state clear in the repository walkthrough", () => {
+  const repositoryWalkthroughSvg = readFileSync(
+    new URL("../media/onboarding/repositories.svg", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    repositoryWalkthroughSvg,
+    />origin\/release<tspan class="muted" dx="12">Remote only<\/tspan><\/text>/u,
+  );
+  assert.doesNotMatch(repositoryWalkthroughSvg, />Remote only<\/text>/u);
+});
+
 function extractCommandLinkIds(markdown: string): readonly string[] {
   return [...markdown.matchAll(/\]\(command:([^)]+)\)/g)].map(
     (commandLinkMatch) => commandLinkMatch[1] ?? "",
