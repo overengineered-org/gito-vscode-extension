@@ -23,6 +23,13 @@ export function findPrimaryWorktree(
   );
 }
 
+export function resolveRepositoryWorktrees(
+  repositoryPath: string,
+  repositoryStateWorktrees: readonly GitWorktree[] | undefined,
+): readonly GitWorktree[] {
+  return repositoryStateWorktrees ?? [findPrimaryWorktree(repositoryPath, [])];
+}
+
 export function createRepositoryFamilyKey(
   repositoryPath: string,
   worktrees: readonly GitWorktree[],

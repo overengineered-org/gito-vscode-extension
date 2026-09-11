@@ -159,7 +159,7 @@ jobs:
           - operating-system: windows-latest
             vscode-version: stable
           - operating-system: ubuntu-latest
-            vscode-version: 1.134.0
+            vscode-version: 1.95.3
     runs-on: ${{ matrix.operating-system }}
     timeout-minutes: 25
     permissions:

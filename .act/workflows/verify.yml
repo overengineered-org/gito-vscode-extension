@@ -54,7 +54,7 @@ jobs:
         run: xvfb-run --auto-servernum npm run test:integration:vsix
       - name: Test minimum VS Code on Linux
         env:
-          GITO_VSCODE_VERSION: 1.134.0
+          GITO_VSCODE_VERSION: 1.95.3
         run: xvfb-run --auto-servernum npm run test:integration:vsix
       - name: Verify release package contract
         run: npm run test:release-package

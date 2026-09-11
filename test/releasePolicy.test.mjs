@@ -43,7 +43,8 @@ test("pins and reuses one immutable ACT environment", () => {
 
 test("validates the exact VSIX across Linux and native release hosts", () => {
   assert.match(localWorkflow, /node-version: 24\.14\.0/);
-  assert.match(localWorkflow, /GITO_VSCODE_VERSION: 1\.134\.0/);
+  assert.match(localWorkflow, /GITO_VSCODE_VERSION: 1\.95\.3/);
+  assert.match(releaseWorkflow, /vscode-version: 1\.95\.3/);
   assert.match(localWorkflow, /npm run test:integration:vsix/);
   assert.match(localWorkflow, /npm run test:release-package/);
   assert.match(localWorkflow, /npm run audit:production/);

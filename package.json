@@ -19,7 +19,7 @@
   },
   "type": "module",
   "engines": {
-    "vscode": "^1.134.0"
+    "vscode": "^1.95.3"
   },
   "categories": [
     "SCM Providers"
@@ -345,7 +345,7 @@
   "devDependencies": {
     "@release-it/conventional-changelog": "12.0.0",
     "@types/node": "^24.13.3",
-    "@types/vscode": "^1.134.0",
+    "@types/vscode": "1.95.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "3.9.2",
     "conventional-changelog-conventionalcommits": "10.4.0",

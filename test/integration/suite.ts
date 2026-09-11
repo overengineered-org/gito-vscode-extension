@@ -12,10 +12,14 @@ import { loadCommitGraphPage } from "../../src/graphHistory.ts";
 import { searchCommitHistory } from "../../src/graphSearch.ts";
 import { GitReferenceType } from "../../src/gitModel.ts";
 import { GraphView } from "../../src/graphView.ts";
+import { openNativeCommitDiff } from "../../src/nativeCommitDiff.ts";
 import { pathsIdentifySameLocation } from "../../src/pathIdentity.ts";
 import { listRemoteTagReferences } from "../../src/remoteTags.ts";
 import { WorkspaceRepositories } from "../../src/workspaceRepositories.ts";
-import { createWorktreeCheckoutPath } from "../../src/worktreeModel.ts";
+import {
+  createWorktreeCheckoutPath,
+  resolveRepositoryWorktrees,
+} from "../../src/worktreeModel.ts";
 import { Worktrees } from "../../src/worktrees.ts";
 import { loadWorktreeWipSummary } from "../../src/worktreeStatus.ts";
 
@@ -121,10 +125,11 @@ export async function run(): Promise<void> {
   );
   const newestCommitHash = graphPage.rows[0]?.hash;
   assert.ok(newestCommitHash);
-  await vscode.commands.executeCommand("git.viewCommit", repository.rootUri, newestCommitHash);
-  const commitDiffTab = vscode.window.tabGroups.activeTabGroup.activeTab;
-  assert.ok(commitDiffTab, "VS Code did not open the requested commit diff.");
-  assert.match(commitDiffTab.label, new RegExp(newestCommitHash.slice(0, 7), "u"));
+  await openNativeCommitDiff(repository, newestCommitHash);
+  const commitDiffTab = await waitForActiveTabMatching(
+    new RegExp(newestCommitHash.slice(0, 7), "u"),
+    "VS Code did not open the requested commit diff within 15 seconds.",
+  );
   const editorTabCountBeforeLayoutToggle = vscode.window.tabGroups.all.reduce(
     (openEditorTabCount, editorTabGroup) => openEditorTabCount + editorTabGroup.tabs.length,
     0,
@@ -258,7 +263,7 @@ export async function run(): Promise<void> {
     commitMessageEmitter.fire({ type: "ready" });
     const expectedWorktreePath = createWorktreeCheckoutPath(
       repository.rootUri.fsPath,
-      repository.state.worktrees,
+      resolveRepositoryWorktrees(repository.rootUri.fsPath, repository.state.worktrees),
       "",
       "Integration Worktree",
       "unused-home",
@@ -581,10 +586,7 @@ export async function run(): Promise<void> {
         await vscode.workspace.fs.delete(integrationChangeUri, { useTrash: false });
       }
       if (createdWorktreePath !== undefined) {
-        await repository.deleteWorktree(createdWorktreePath, {
-          force: true,
-          label: "Integration Worktree",
-        });
+        await worktrees.deleteRepositoryWorktree(repository, createdWorktreePath, true);
       }
     } finally {
       gitSidebar.dispose();
@@ -745,6 +747,21 @@ async function waitForRepositoryState(
   while (Date.now() < deadline) {
     if (repositoryStateMatches()) {
       return;
+    }
+    await delay(100);
+  }
+  throw new Error(timeoutMessage);
+}
+
+async function waitForActiveTabMatching(
+  activeTabLabelPattern: RegExp,
+  timeoutMessage: string,
+): Promise<vscode.Tab> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const activeEditorTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    if (activeEditorTab !== undefined && activeTabLabelPattern.test(activeEditorTab.label)) {
+      return activeEditorTab;
     }
     await delay(100);
   }
