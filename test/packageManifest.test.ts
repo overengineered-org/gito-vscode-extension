@@ -4,6 +4,8 @@ import test from "node:test";
 
 interface ExtensionManifest {
   readonly browser?: string;
+  readonly devDependencies: Readonly<Record<string, string>>;
+  readonly engines: { readonly vscode: string };
   readonly galleryBanner: { readonly color: string; readonly theme: string };
   readonly icon: string;
   readonly keywords: readonly string[];
@@ -95,6 +97,8 @@ test("ships complete Marketplace discovery metadata", () => {
 
 test("ships one desktop path backed by VS Code Git", () => {
   assert.equal(extensionManifest.browser, undefined);
+  assert.equal(extensionManifest.engines.vscode, "^1.95.3");
+  assert.equal(extensionManifest.devDependencies["@types/vscode"], "1.95.0");
   assert.deepEqual(extensionManifest.extensionKind, ["workspace", "ui"]);
   assert.deepEqual(extensionManifest.extensionDependencies, ["vscode.git"]);
   assert.deepEqual(extensionManifest.capabilities, {

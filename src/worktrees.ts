@@ -3,7 +3,11 @@ import { homedir } from "node:os";
 import * as vscode from "vscode";
 
 import type { GitApi, GitRepository, GitWorktree } from "./gitApi.ts";
-import { createWorktreeCheckoutPath } from "./worktreeModel.ts";
+import { runGitCommand } from "./gitCommand.ts";
+import {
+  createWorktreeCheckoutPath,
+  resolveRepositoryWorktrees,
+} from "./worktreeModel.ts";
 import { listRepositoryWorktrees } from "./worktreeDiscovery.ts";
 import { canonicalizePath } from "./pathIdentity.ts";
 import {
@@ -61,7 +65,10 @@ export class Worktrees implements vscode.Disposable {
         `Worktree discovery failed for '${repository.rootUri.fsPath}'.`,
         worktreeDiscoveryFailure,
       );
-      repositoryWorktrees = repository.state.worktrees;
+      repositoryWorktrees = resolveRepositoryWorktrees(
+        repository.rootUri.fsPath,
+        repository.state.worktrees,
+      );
     }
     await this.refreshWipSummaries(repositoryWorktrees);
     return repositoryWorktrees;
@@ -176,12 +183,12 @@ export class Worktrees implements vscode.Disposable {
           location: vscode.ProgressLocation.Notification,
           title: `Creating worktree '${displayName}'…`,
         },
-        () =>
-          repository.createWorktree({
-            branch: branchName,
-            commitish: currentCommitish,
-            path: worktreePath,
-          }),
+        () => this.createRepositoryWorktree(
+          repository,
+          branchName,
+          currentCommitish,
+          worktreePath,
+        ),
       );
       const canonicalWorktreePath = canonicalizePath(createdWorktreePath);
       await this.setDisplayName(canonicalWorktreePath, displayName);
@@ -232,11 +239,57 @@ export class Worktrees implements vscode.Disposable {
     this.changedEmitter.fire();
   }
 
+  public async deleteRepositoryWorktree(
+    repository: GitRepository,
+    worktreePath: string,
+    forceRemoval: boolean,
+  ): Promise<void> {
+    if (repository.deleteWorktree !== undefined) {
+      await repository.deleteWorktree(worktreePath, {
+        force: forceRemoval,
+        label: "Git'o worktree",
+      });
+      return;
+    }
+    await runGitCommand(
+      {
+        environment: this.gitApi.git.env,
+        executablePath: this.gitApi.git.path,
+        repositoryPath: repository.rootUri.fsPath,
+      },
+      ["worktree", "remove", ...(forceRemoval ? ["--force"] : []), worktreePath],
+    );
+  }
+
   public async openWorktree(worktreePath: string, openInNewWindow: boolean): Promise<void> {
     await vscode.commands.executeCommand(
       "vscode.openFolder",
       vscode.Uri.file(canonicalizePath(worktreePath)),
       openInNewWindow,
     );
+  }
+
+  private async createRepositoryWorktree(
+    repository: GitRepository,
+    branchName: string,
+    currentCommitish: string,
+    worktreePath: string,
+  ): Promise<string> {
+    if (repository.createWorktree !== undefined) {
+      return repository.createWorktree({
+        branch: branchName,
+        commitish: currentCommitish,
+        path: worktreePath,
+      });
+    }
+    await runGitCommand(
+      {
+        environment: this.gitApi.git.env,
+        executablePath: this.gitApi.git.path,
+        repositoryPath: repository.rootUri.fsPath,
+      },
+      ["worktree", "add", "-b", branchName, worktreePath, currentCommitish],
+    );
+    return worktreePath;
   }
 }

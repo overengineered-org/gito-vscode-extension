@@ -15,9 +15,11 @@ import { loadCommitGraphPage } from "./graphHistory.ts";
 import { searchCommitHistory } from "./graphSearch.ts";
 import { countRepositoryChanges, type GitReference } from "./gitModel.ts";
 import { buildCommitGraphRows } from "./graphModel.ts";
+import { openNativeCommitDiff } from "./nativeCommitDiff.ts";
 import { pathsIdentifySameLocation } from "./pathIdentity.ts";
 import type { WorkspaceRepositories } from "./workspaceRepositories.ts";
 import type { Worktrees } from "./worktrees.ts";
+import { resolveRepositoryWorktrees } from "./worktreeModel.ts";
 import { formatWorktreeWipSummary } from "./worktreeStatus.ts";
 
 interface GraphViewMessage {
@@ -218,11 +220,7 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
       );
       if (targetRepository !== undefined) {
         try {
-          await vscode.commands.executeCommand(
-            "git.viewCommit",
-            targetRepository.rootUri,
-            graphViewMessage.commitHash,
-          );
+          await openNativeCommitDiff(targetRepository, graphViewMessage.commitHash);
         } catch (commitViewFailure) {
           this.diagnostics.error("Opening the native commit diff failed.", commitViewFailure);
           void vscode.window.showErrorMessage(
@@ -502,7 +500,13 @@ export class GraphView implements vscode.WebviewViewProvider, vscode.Disposable 
         }),
         selectedRepository.getRefs({ pattern: "refs/tags", sort: "creatordate" }),
       ]);
-      const graphWorktrees = this.createGraphWorktreeStates(selectedRepository.state.worktrees, selectedRepository);
+      const graphWorktrees = this.createGraphWorktreeStates(
+        resolveRepositoryWorktrees(
+          selectedRepository.rootUri.fsPath,
+          selectedRepository.state.worktrees,
+        ),
+        selectedRepository,
+      );
       const allGraphReferences = [...branchReferences, ...tagReferences];
       const graphSourceKey = createGraphSourceKey(
         selectedRepository,

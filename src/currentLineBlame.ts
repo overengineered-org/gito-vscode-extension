@@ -10,6 +10,7 @@ import {
 } from "./blameModel.ts";
 import type { GitApi, GitRepository } from "./gitApi.ts";
 import { runGitCommand } from "./gitCommand.ts";
+import { openNativeCommitDiff } from "./nativeCommitDiff.ts";
 import type { WorkspaceRepositories } from "./workspaceRepositories.ts";
 
 interface CurrentLineContext {
@@ -133,9 +134,8 @@ export class CurrentLineBlame implements vscode.Disposable {
       selectedBlameAction?.commandKind === "commit" &&
       currentLineContext.blame.commitHash !== undefined
     ) {
-      await vscode.commands.executeCommand(
-        "git.viewCommit",
-        currentLineContext.repository.rootUri,
+      await openNativeCommitDiff(
+        currentLineContext.repository,
         currentLineContext.blame.commitHash,
       );
     } else if (selectedBlameAction?.commandKind === "history") {

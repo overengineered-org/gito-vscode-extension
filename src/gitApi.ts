@@ -32,7 +32,7 @@ interface GitRepositoryState {
   readonly rebaseCommit?: GitCommit;
   readonly remotes: readonly GitRemote[];
   readonly untrackedChanges: readonly GitChange[];
-  readonly worktrees: readonly GitWorktree[];
+  readonly worktrees?: readonly GitWorktree[];
   readonly workingTreeChanges: readonly GitChange[];
 }
 
@@ -61,12 +61,12 @@ export interface GitRepository {
   clean(filePaths: readonly string[]): Promise<void>;
   commit(message: string): Promise<void>;
   createBranch(branchName: string, checkout: boolean, gitReference?: string): Promise<void>;
-  createWorktree(options: {
+  createWorktree?(options: {
     readonly branch: string;
     readonly commitish: string;
     readonly path: string;
   }): Promise<string>;
-  deleteWorktree(
+  deleteWorktree?(
     worktreePath: string,
     options?: { readonly force?: boolean; readonly label?: string },
   ): Promise<void>;

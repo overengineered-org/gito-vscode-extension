@@ -8,6 +8,7 @@ import {
   createCommitGraphActionStates,
 } from "./graphActionModel.ts";
 import { countRepositoryChanges } from "./gitModel.ts";
+import { openNativeCommitDiff } from "./nativeCommitDiff.ts";
 
 export class GraphActions {
   public constructor(
@@ -41,7 +42,7 @@ export class GraphActions {
     }
     switch (actionId) {
       case "openCommit":
-        await vscode.commands.executeCommand("git.viewCommit", repository.rootUri, commitHash);
+        await openNativeCommitDiff(repository, commitHash);
         return undefined;
       case "compareWithHead":
         throw new Error("Comparison actions are handled by the graph preview.");

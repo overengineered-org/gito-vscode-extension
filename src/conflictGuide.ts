@@ -10,6 +10,7 @@ import {
 } from "./conflictGuideModel.ts";
 import type { GitCommit, GitRepository } from "./gitApi.ts";
 import { type GitReference, GitReferenceType } from "./gitModel.ts";
+import { resolveRepositoryWorktrees } from "./worktreeModel.ts";
 
 type ConflictGuideAction = "abort" | "markResolved" | "openMergeEditor";
 
@@ -132,7 +133,10 @@ export async function inspectConflictContext(
     .catch(() => []);
   const currentBranchName = repository.state.HEAD?.name;
   if (repository.state.rebaseCommit !== undefined) {
-    const currentWorktree = repository.state.worktrees.find(
+    const currentWorktree = resolveRepositoryWorktrees(
+      repository.rootUri.fsPath,
+      repository.state.worktrees,
+    ).find(
       (worktree) => vscode.Uri.file(worktree.path).fsPath === repository.rootUri.fsPath,
     );
     const sourceReferenceName =

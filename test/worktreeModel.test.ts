@@ -7,6 +7,7 @@ import {
   createRepositoryFamilyKey,
   createWorktreeCheckoutPath,
   formatWorktreeBranchName,
+  resolveRepositoryWorktrees,
   selectRepositoryFamilyRepresentatives,
 } from "../src/worktreeModel.ts";
 
@@ -98,6 +99,16 @@ test("groups every open checkout under one selected repository family", () => {
     ),
     [linkedWorktree.path, join(projectsRoot, "other")],
   );
+});
+
+test("supplies the primary worktree when older VS Code omits worktree state", () => {
+  assert.deepEqual(resolveRepositoryWorktrees(primaryWorktree.path, undefined), [{
+    detached: false,
+    main: true,
+    name: "repository",
+    path: primaryWorktree.path,
+    ref: "",
+  }]);
 });
 
 test("shows branch and detached worktree state explicitly", () => {
